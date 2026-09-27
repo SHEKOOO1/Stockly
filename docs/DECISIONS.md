@@ -49,6 +49,27 @@ Consequences, Affected components.
 | ADR-0029 | UTC storage, tenant timezone for presentation | Proposed |
 | ADR-0030 | Access token in memory, refresh token in an HttpOnly cookie | Proposed |
 | ADR-0031 | Web-push subscriptions are membership-scoped and isolated | Proposed |
+| ADR-0032 | Every unique index on a tenant-scoped table leads with `TenantId` | Proposed |
+| ADR-0033 | `ProductBarcode` is the single source of truth for barcodes | Proposed |
+| ADR-0034 | Platform operators have their own session scope and login flow | Proposed |
+| ADR-0035 | Terminals are addressed by a 128-bit enrollment code | Proposed |
+| ADR-0036 | Throttle identifiers are HMAC-hashed, not plain-hashed | Proposed |
+| ADR-0037 | Append-only tables carry no `RowVersion` and no `IsCurrent` | Proposed |
+| ADR-0038 | Typed foreign keys instead of polymorphic operational references | Proposed |
+| ADR-0039 | `CHECK` constraints carry absolute invariants only | Proposed |
+| ADR-0040 | The delivery plan is eight phases | Proposed |
+| ADR-0041 | Nullable unique-key components get explicit filtered variants | Proposed |
+| ADR-0042 | SQL Server full text for V1 global search | Proposed |
+| ADR-0043 | The barcode symbology set is the six modelled values | Proposed |
+| ADR-0044 | Role grants: enumerate the 33 decisive permissions, derive the other 72 by rule D1–D5 | Proposed |
+
+**Total: 44 ADRs.** ADR-0001–ADR-0031 are the original architecture set;
+ADR-0032–ADR-0044 were added during blueprint finalization to close contradictions
+that the original set left open (index tenant-scoping, barcode ownership, platform
+authorization, terminal identity, throttle hashing, append-only semantics,
+referential integrity, `CHECK` scope, phase count, nullable unique keys, search
+engine, symbologies, role-grant completeness). ADR-0008 is the PIN/password
+hashing decision; ADR-0018 is the FEFO decision extended by ADR-0041.
 
 ---
 
@@ -539,7 +560,8 @@ destroys the historical reference), status field without a delete marker
 (rejected: over-engineering for V1).
 
 **Consequences:** every list query must consider `IsDeleted`; unique indexes must
-be filtered; `includeDeleted` requires a permission.
+be filtered; `includeDeleted=true` requires the **resource's own** `*.manage`
+permission (see `API_CONVENTIONS.md` §5.3), never a single global permission.
 
 **Affected:** all master data, queries, indexes.
 
@@ -842,6 +864,451 @@ membership, so switching tenants requires a separate subscription. A test assert
 no endpoint returns subscription keys.
 
 **Affected:** notifications module, security tests S21.
+
+---
+
+## ADR-0032 — Every unique index on a tenant-scoped table leads with `TenantId`
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** Any unique index or unique constraint on a tenant-scoped table
+MUST have `TenantId` as its **leading** column, so uniqueness is enforced within
+a tenant and only within a tenant. The only permitted exceptions are indexes that
+guard a **server-generated global identifier** which has no tenant context at
+lookup time: `files.Attachment.StorageKey`,
+`identity.RefreshToken.TokenHash`, `identity.PasswordResetToken.TokenHash`,
+`identity.Device.EnrollmentCode`, `notifications.PushSubscription.Endpoint`, and
+the surrogate keys of `identity.LoginAttempt` / `audit.AuditLog`. Each exception
+is named explicitly in `DATABASE_DESIGN.md` §5.6.
+
+**Reason:** `inventory.StockBalance`, `inventory.InventoryLot`,
+`master.ProductBarcode`, `identity.MembershipWarehouse` and others previously
+had unique indexes such as `(WarehouseId, ProductId)` or
+`(MembershipId, WarehouseId)`. Two problems follow. First, the index no longer
+supports the dominant query prefix `(TenantId, …)`. Second — and worse — a
+composite FK from a child references its parent on `(Id, TenantId)`, so the
+parent needs `UNIQUE (Id, TenantId)` regardless; an index that omits `TenantId`
+leaves the *business* uniqueness rule accidentally global, which would let one
+tenant block another tenant's SKU code or warehouse code.
+
+**Alternatives considered:** keep business keys global (rejected: a global
+uniqueness requirement that the product never asked for, and a cross-tenant
+denial-of-service). Drop tenant-scoped uniqueness entirely (rejected: duplicate
+SKUs within a tenant make barcode scanning and stock lookups ambiguous).
+
+**Consequences:** every entity's index list changes; the migration must create
+the `TenantId`-leading indexes up front. Global-lookup code (terminal
+enrollment, attachment blob fetch) uses its own documented unique index.
+
+**Affected:** all 66 entities' index definitions, `DATABASE_DESIGN.md` §5/§7,
+`PROJECT_BLUEPRINT.md` §5.1, migration tests.
+
+---
+
+## ADR-0033 — `master.ProductBarcode` is the single source of truth for barcodes
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** `master.Product` has **no** `Barcode` column. Every barcode lives in
+`master.ProductBarcode`, which carries `(TenantId, Barcode)` as a unique key and
+`IsPrimary` to mark the primary code.
+
+**Reason:** the previous schema had both `Product.Barcode` and
+`ProductBarcode`, each with its own unique index. The two could disagree, the
+scan lookup had to check two tables (or pick an arbitrary winner), and "primary
+barcode" was expressible twice with no single authority.
+
+**Alternatives considered:** keep `Product.Barcode` as a denormalised cache of
+the primary (rejected: two write paths, drift, and no compensating consistency
+rule). Keep only `Product.Barcode` and drop `ProductBarcode` (rejected: products
+legitimately carry several codes — EAN-13 plus a Code-128 for printing).
+
+**Consequences:** product DTOs expose barcodes as a collection; the scan lookup
+hits one covering index; no data migration is needed (V1 has no data).
+
+**Affected:** `master` module, barcode scan endpoints, product import/export,
+`DATABASE_DESIGN.md` §4.4.
+
+---
+
+## ADR-0034 — Platform operators have their own session scope and login flow
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** `identity.AuthSession` gains `SessionScope` (`1=Tenant`,
+`2=Platform`) with `TenantId` and `MembershipId` **nullable** and a `CHECK`
+enforcing exactly one shape. `POST /api/v1/platform/auth/login` authenticates a
+user with `AppUser.IsPlatformAdmin = true` and issues a token with scope
+`platform` and no tenant claim. A platform token is rejected by every
+non-`/platform/**` route; a tenant token is rejected by every `/platform/**`
+route. In V1, `IsPlatformAdmin` grants the entire `platform.*` catalogue.
+
+**Reason:** the platform could not be operated as designed. The tenant login flow
+rejects a user with zero active memberships, and the permission resolver
+derives every permission from `MembershipRole`, so a platform operator with no
+tenant membership had no way to sign in and no way to hold a permission. Two
+alternative fixes were rejected: giving platform operators a synthetic tenant
+(fakes tenant scope and pollutes reports) and letting them hold a real tenant
+membership (their privileges would then depend on which tenant they picked).
+
+**Alternatives considered:** a single scope with implicit platform checks inside
+every handler (rejected: no defence in depth, and an IDOR waiting to happen).
+Splitting platform operators into separate roles now (rejected: premature; the
+flag is the minimum, recorded as RP-TBD-06).
+
+**Consequences:** `scp` becomes a required claim; the authorization middleware
+gains a scope branch; new security tests assert the two token types cannot be
+used on each other's routes; a platform session list is available for audit.
+
+**Affected:** identity module, authorization middleware, `SECURITY_ARCHITECTURE.md`
+§5.4, `API_CONVENTIONS.md`, `ROLES_PERMISSIONS.md` §3.
+
+---
+
+## ADR-0035 — Terminals are addressed by a 128-bit enrollment code
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** `identity.Device` gains `EnrollmentCode` (128-bit random,
+base32url, globally unique, rotatable, never displayed to end users). The shared
+terminal endpoints are addressed by that code, not by `DeviceCode`. Rotating or
+revoking a device invalidates the code. `GET
+/api/v1/terminal/sessions/{enrollmentCode}/identities` returns only
+`{ membershipId, displayName, avatarRef }` for memberships assigned to that
+device's warehouse, and is rate limited per IP and per code.
+
+**Reason:** the terminal flow asked a client to present a `deviceId`, and the
+`DeviceCode` examples in the design (`KITCHEN-01`) are guessable. A remote
+attacker could enumerate codes and harvest the names of a tenant's staff — a
+staffing and schedule disclosure before any authentication is attempted.
+Knowing a `deviceId` was also enough to reach the identity-listing endpoint.
+
+**Alternatives considered:** requiring the terminal to be pre-registered by
+membership id (rejected: a shared terminal must support many users, and the id
+would still be a bearer value). Client certificates per terminal (rejected:
+provisioning cost is disproportionate in V1). Network allow-listing only
+(rejected: the same WLAN is not a trust boundary; a compromised device on that
+WLAN is the threat).
+
+**Consequences:** the enrollment code is displayed once at registration and
+stored by the operator; the residual risk that physical possession is not
+cryptographically proven is recorded as SEC-KNW-01/SEC-KNW-08 in
+`DEVELOPMENT_STATUS.md` and re-assessed in V2.
+
+**Affected:** identity module, terminal UI, `SECURITY_ARCHITECTURE.md` §6,
+`WORKFLOWS.md`, security tests for the terminal flow.
+
+---
+
+## ADR-0036 — Throttle identifiers are HMAC-hashed, not plain-hashed
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** `identity.LoginAttempt.IdentifierHash` and
+`EnrollmentCodeHash` are `HMAC-SHA256(value, serverPepper)` with the value
+lowercase-trimmed and case-folded first. The pepper is a 32-byte secret held in
+the secret store, never in the database and never in configuration committed to
+source.
+
+**Reason:** the previous design used a plain SHA-256 of the email/username and
+justified it as "avoids storing candidate identities in plaintext". A plain hash
+of a low-entropy value is reversible in practice: email addresses come from a
+small public set, so anyone with a database dump can confirm which addresses have
+accounts by hashing a candidate list. The same argument applies to enrollment
+codes, which is why that column is now hashed too. High-entropy random values
+(`RefreshToken.TokenHash`, `PasswordResetToken.TokenHash`) do **not** need a
+pepper and are explicitly not changed.
+
+**Alternatives considered:** storing the identifier encrypted (rejected: the
+throttle path then needs decryption on every attempt and the key becomes a
+runtime dependency of authentication). A keyed hash with a per-tenant key
+(rejected: pre-tenant requests have no tenant).
+
+**Consequences:** rotating the pepper invalidates the throttle history, which is
+acceptable and scheduled in a maintenance window; the pepper must be present at
+startup or the app fails closed.
+
+**Affected:** identity module, `SECURITY_ARCHITECTURE.md` §4, `.env.example`
+(`Auth__IdentifierPepperSource` — a secret-store reference, never the value).
+
+---
+
+## ADR-0037 — Append-only tables carry no `RowVersion` and no `IsCurrent`
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** `audit.AuditLog`, `inventory.StockTransaction`,
+`purchasing.ProductPriceHistory`, `events.EventShortageSnapshot`,
+`food.RecipeCostSnapshot` and `food.EventFoodCostSnapshot` have **no**
+`RowVersion`, no `IsDeleted`, and no update path. "Current" is defined as the
+newest row, never stored as a mutable flag.
+
+**Reason:** these tables were simultaneously described as append-only and given
+concurrency tokens or a `RowVersion` + `IsCurrent` pair
+(`EventFoodCostSnapshot`). That is a contradiction with a real failure mode: two
+concurrent recalculations each believe they are writing the current row, and a
+`rowversion` on a table the database principal may only `INSERT` into is dead
+metadata. `ProductPriceHistory` and `EventShortageSnapshot` had the same
+problem.
+
+**Alternatives considered:** keep `IsCurrent` and maintain it with a trigger
+(rejected: triggers reintroduce hidden writes on an immutable table, and a
+partial unique index on a mutable flag is not a concurrency control). Keep
+`RowVersion` "for consistency" (rejected: it invites an update path that the
+permission model forbids).
+
+**Consequences:** read paths that need "the current value" add `ORDER BY
+<timestamp> DESC` on an index that already exists. A `StockDocumentLine` cannot
+carry `BalanceAfter` (a line may split over several lots), so the running balance
+lives on the ledger row; `events.Event.CostSnapshotId` is removed for the same
+reason (a forward pointer to a row written later).
+
+**Affected:** inventory, purchasing, events, food, audit modules;
+`DATABASE_DESIGN.md` §4.
+
+---
+
+## ADR-0038 — Typed foreign keys instead of polymorphic operational references
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** Operational integrity tables use typed nullable foreign keys with a
+`CHECK` requiring exactly one source, plus a small integer tag for the API:
+`inventory.StockDocument` gets `SourceGoodsReceiptId`, `SourceStockCountId`,
+`SourceEventConsumptionId` and `SourceType`;
+`purchasing.PurchaseApproval` gets `PurchaseRequestId`, `PurchaseOrderId` and
+`EntityType`. Polymorphic `(Type, Id)` pairs are permitted **only** in
+append-only history tables, where a dangling reference is harmless because the
+row is never rewritten.
+
+**Reason:** the previous design described `SourceDocumentId` as "FK NULL (to
+purchasing.GoodsReceipt etc., filtered)". SQL Server cannot create a foreign key
+whose target table is chosen at runtime, so that column was in fact an
+unreferenced `uniqueidentifier`: the database would have accepted a posted stock
+document pointing at nothing, and no test could have caught it. The same applied
+to `PurchaseApproval.EntityId`, where an approval row not linked to any request
+or order would be invisible to the approval workflow.
+
+**Alternatives considered:** a single nullable `SourceTableName` + `SourceId`
+(rejected: same problem, less explicit). Separate junction tables per source type
+(rejected: more tables for no integrity gain).
+
+**Consequences:** the posting transaction must set the typed column; the CHECK
+constraint makes an impossible source combination unrepresentable; the API
+serialises the tag for clients while the database relies on the FK.
+
+**Affected:** inventory and purchasing modules, `DATABASE_DESIGN.md` §4.5/§4.6.
+
+---
+
+## ADR-0039 — `CHECK` constraints carry absolute invariants only
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** A `CHECK` constraint is used only when **no** business scenario may
+ever violate the rule. Where the product allows a documented exception, the bound
+is enforced by a guarded `UPDATE` that references the parent row, a specific
+business error, and an audit record. Two current cases:
+`purchasing.PurchaseOrderLine.ReceivedQuantity` (over-receipt, TBD-08) and
+`events.EventConsumption.ConsumedQuantity` (over-consumption sanity guard).
+
+**Reason:** the previous schema declared
+`CHECK (ReceivedQuantity <= OrderedQuantity)` and simultaneously documented that
+over-receipt is allowed when `AllowOverReceipt = true`. A `CHECK` cannot be
+relaxed from application code, so the database would have rejected a posting the
+product is required to accept — the guarantee was unachievable, and the "relax
+by application logic" note described something impossible. The same problem
+applied to `ConsumedQuantity <= PlannedQuantity * 2`.
+
+**Alternatives considered:** keep the CHECK and drop over-receipt from the product
+(rejected: over-receipt is a real warehouse behaviour, already a business rule).
+Drop the CHECK and rely on validation alone (rejected: a direct SQL write or a
+buggy service would drift). Use a trigger with a session-context bypass
+(rejected: bypass context is a security smell in a system this strict).
+
+**Consequences:** the guarantee for these two bounds moves to the service layer
+plus integration tests, and the tests MUST cover the allowed exception as well as
+the rejection. Absolute invariants (`Quantity > 0`, `OnHandQuantity >= 0`,
+`ReservedQuantity <= OnHandQuantity`, the session-scope shape) keep their CHECK
+constraints.
+
+**Affected:** purchasing and events modules, `DATABASE_DESIGN.md` §5.8,
+`BUSINESS_RULES.md`, `TESTING_STRATEGY.md`.
+
+---
+
+## ADR-0040 — The delivery plan is eight phases
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** Delivery is organised as **Phase 0** (blueprint) plus **eight**
+implementation phases, defined in `PROJECT_BLUEPRINT.md` §25: 1 Foundation +
+Architecture + Database + Security Core; 2 Identity + Tenants + Warehouses +
+RBAC; 3 Products + Units + Inventory Engine; 4 Devices + Shared Terminal +
+Purchasing; 5 Batches + Expiry + Waste + Transfers + Stocktake + Locations +
+Barcode/QR; 6 Events + Recipes + Food Cost + Forecasting; 7 Reports +
+Notifications + SaaS + Search + Customization; 8 Frontend PWA + Terminal UI +
+Full System Testing + Production.
+
+**Reason:** the previous plan had eleven implementation phases. Authentication
+was separated from identity even though neither is testable without the other,
+"security hardening" was a phase of its own even though a security regression is
+a build failure at every phase (`AGENTS.md` §4), and production infrastructure
+was deferred to the last phase, which guarantees it is rushed. Merging them gives
+eight phases that each end in a demonstrable, verifiable increment and keeps
+infrastructure in Phase 1 where it belongs.
+
+**Alternatives considered:** keeping eleven phases (rejected: phases that cannot
+be independently demonstrated). A feature-per-phase backlog (rejected: no
+security spine until late).
+
+**Consequences:** every document that referenced "Phase 9/10/11" must be
+remapped; `PROJECT_BLUEPRINT.md` §25 carries the explicit legacy mapping.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §25, `ARCHITECTURE.md`,
+`TESTING_STRATEGY.md` §2, `DEVELOPMENT_STATUS.md`, `README.md`.
+
+---
+
+## ADR-0041 — Nullable unique-key components get explicit filtered variants
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** Any unique index that includes a nullable column gets an explicit
+`WHERE <col> IS NULL` variant for each null shape that must be unique. Affected
+in V1: `inventory.Batch` (non-expiry batches),
+`inventory.StockCountLine` (non-batched count lines),
+`master.UnitConversion` (tenant-wide defaults),
+`events.EventRequirement` and `events.EventConsumption` (event-wide, i.e.
+`MealTypeId IS NULL`), `events.EventAttendance` (walk-ins),
+`food.EventFoodCostSnapshot` (event-level cost, `MealTypeId IS NULL`).
+`inventory.InventoryLot` gains a persisted `ExpirySortKey date` column so FEFO is
+an index seek instead of a join to `Batch`.
+
+**Reason:** in SQL Server a unique index treats NULLs as *distinct*, so
+`(TenantId, EventId, ProductId, MealTypeId)` permits two rows with
+`MealTypeId = NULL` — exactly the duplicate an event-wide requirement must
+forbid. The design previously relied on "a filtered variant" without ever
+listing one, so the duplicate was reachable. Persisting `ExpirySortKey` also
+removes the `ISNULL(ExpiryDate,'9999-12-31')` expression from the FEFO path.
+
+**Alternatives considered:** `COALESCE` in an indexed computed column (rejected:
+it makes the key non-null and hides the semantics). A sentinel `Guid.Empty` for
+"no meal type" (rejected: sentinel values leak into the domain).
+
+**Consequences:** each affected table carries one extra index; the FEFO index
+becomes `(TenantId, WarehouseId, ProductId, ExpirySortKey, FirstReceivedAtUtc,
+Id)`.
+
+**Affected:** inventory, master, events, food modules, `DATABASE_DESIGN.md` §5.7.
+
+---
+
+## ADR-0042 — SQL Server full text for V1 global search
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** V1 global search uses a SQL Server `FULLTEXT` catalog with the
+`Arabic_CI_AS` collation over `master.Product`, `master.ProductBarcode`,
+`purchasing.Supplier`, `events.Event` and `master.Category`, plus a trigram
+`LIKE` fallback for partial codes. Barcodes are matched by unique index, not by
+full text. A dedicated search engine is V2 only if a measured requirement
+appears.
+
+**Reason:** the choice was open (TBD-17) with no benchmark and no decision, so
+the search feature had no defined implementation. Within the chosen stack
+(full-text is in the same engine as the data, one backup, no new service in a
+modular monolith) this is the lowest-complexity option that supports Arabic.
+The known limitation — `Arabic_CI_AS` does no Arabic stemming or diacritic
+normalisation — is recorded rather than hidden.
+
+**Alternatives considered:** Elasticsearch (rejected for V1: a second service to
+deploy, secure, back up and monitor, for a feature the scale target does not
+require). Client-side search (rejected: breaks the admin use case and leaks the
+row count).
+
+**Consequences:** Phase 7 must benchmark Arabic search quality and recall before
+the feature is declared done; a trigram index is added only if the benchmark
+requires it.
+
+**Affected:** search module, `ARCHITECTURE.md`, `TESTING_STRATEGY.md` §8.
+
+---
+
+## ADR-0043 — The barcode symbology set is the six modelled values
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** V1 supports EAN-13, EAN-8, UPC-A, Code-128, QR and DataMatrix —
+exactly the values the `Symbology` enum already models. Validation is
+per-symbology (length, check digit) where the symbology is known; a scanned code
+of unknown symbology is stored as `Code128` rather than rejected, and a manual
+entry is always allowed.
+
+**Reason:** the set was open (TBD-18) while the column already enumerated six
+values, so the schema and the requirement disagreed. The six values cover retail
+EAN, North American UPC, the internal Code-128 labels a warehouse prints itself,
+and the two 2-D symbologies used for receiving and asset labels. Rejecting an
+unrecognised scan would block a real receiving workflow.
+
+**Alternatives considered:** Code-39 (rejected: mostly legacy, and rarely used in
+this domain). GS1-128 (rejected: it is a Code-128 application identifier, handled
+by storing the AI prefix, not a new symbology).
+
+**Consequences:** the scanner normalises the symbology; symbology-specific
+validation is unit-tested per value; `Code128` is the documented fallback.
+
+**Affected:** master module, barcode/QR scanning, `DATABASE_DESIGN.md` §4.4.
+
+---
+
+## ADR-0044 — Role grants are enumerated for decisions and derived by rule for reads
+
+**Date:** 2026-09-27 · **Status:** Proposed
+
+**Decision:** the role → permission matrix enumerates the 33 permissions that
+determine what a role can *do* (writes, approvals, dangerous actions, and the
+sentinel reads that the roles are named after). The remaining 72 codes are
+granted by a mechanical derivation rule, stated in `ROLES_PERMISSIONS.md` §3.1.1
+as rules D1–D5:
+
+- D1 — the four read tiers grant every non-cost `*.read` / read-style code.
+- D2 — `tenant_owner` receives every tenant-scoped code; `tenant_admin`
+  receives every tenant-scoped code except an explicit ownership-critical
+  exception list.
+- D3 — functional ownership: a code is granted to the role whose stated purpose
+  owns the resource, and to no other role.
+- D4 — cost visibility is never inherited by a read tier.
+- D5 — a write never follows a read.
+
+`Stockly.ArchitectureTests` asserts the generated grant set is exactly
+reproducible from the permission catalogue plus D1–D5, so the rule and the seed
+cannot drift apart silently.
+
+**Reason:** the 105-code catalogue was complete but the matrix listed only 33 of
+those codes, so 72 codes — every read permission, every attachment permission,
+every purchasing-master write, `admin.search`, `notifications.*` — had no
+documented grant anywhere. Phase 1 seeds roles from this design, so the gap was
+a real blocker, not a cosmetic omission. Enumerating 105 × 11 = 1155 cells by
+hand is unreadable and rots on the first change; a stated rule is checkable,
+which an unwritten intention is not.
+
+**Alternatives considered:** leave it implicit and let the implementer decide
+(rejected: that is a hidden decision, exactly what this document exists to
+prevent). Enumerate the full 105 × 11 matrix (rejected: 1155 hand-maintained
+cells is a defect waiting to happen, and most of it is a mechanical function of
+five rules). Store the grant set in a spreadsheet as a separate source of truth
+(rejected: a third place to keep in sync, and it would drift from the catalogue).
+
+**Consequences:** the role matrix is complete by construction, so no code has an
+undefined grant. Two roles are deliberately asymmetric and documented as such:
+`viewer` never receives a cost code (D4) and
+`inventory.reservations.manage` is seeded but granted to nobody in V1 (D3).
+Adding a permission code in V1.1 now requires choosing a rule or a matrix row —
+that is a feature, and the architecture test is what enforces it.
+
+**Affected:** `ROLES_PERMISSIONS.md` §3, seeding migration (Phase 1),
+`Stockly.ArchitectureTests`, `TESTING_STRATEGY.md` §3.2.
 
 ---
 

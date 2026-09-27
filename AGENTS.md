@@ -102,3 +102,30 @@ concurrency, migration and database-integrity tests) cannot be executed here
 until Docker or a local SQL Server is installed. This limitation is tracked in
 `docs/DEVELOPMENT_STATUS.md` and `docs/TESTING_STRATEGY.md`. Do not claim such
 tests passed on this machine.
+
+---
+
+## 10. Current state (verified 2026-09-27)
+
+| Field | Value |
+|---|---|
+| Phase | **Phase 0 — Blueprint v1.0, final draft** |
+| Blueprint status | `STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS` |
+| Code / migrations / tests | **None.** Do not create any while the gate is closed |
+| Entities / permissions / roles | 66 across 12 schemas · 105 codes in 13 namespaces · 11 tenant + 1 platform authority |
+| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · 43 (all `Proposed`) · 8 |
+| Open owner decisions | **20** (of the 25 items in `PROJECT_BLUEPRINT.md` §23; 4 design + 1 assumption are disposed) |
+| Git | Commit `9121044`, plus an **empty nested repo** at `H:\Stockly\Stockly` (ISS-04) — do not touch |
+
+Consequences for an agent working here right now:
+
+- **The design work is finished.** The documented final counts are listed in
+  `docs/DEVELOPMENT_STATUS.md` §2. If you change any of them, change the count in
+  the same commit, in every document that repeats it, and add a `CHANGELOG.md`
+  entry. A stale count is a defect, not a cosmetic issue.
+- **Do not start Phase 1** — not a scaffold, not a `DbContext`, not a test, not
+  a CI file. The gate is owner ratification (§27 of the blueprint).
+- **Do not promote ADRs from `Proposed`** on your own authority.
+- **Do not delete, ignore, merge, or commit around `H:\Stockly\Stockly`.** It is
+  an owner decision (ISS-04), and Git commands inside it fail because the
+  repository has no commits.

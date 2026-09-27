@@ -3,9 +3,11 @@
 | Field | Value |
 |---|---|
 | Document | `BUSINESS_RULES.md` |
-| Version | 0.1.0 |
-| Status | DRAFT — Phase 0 |
+| Version | 1.0.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
 | Last updated | 2026-09-27 |
+| Rules | **147**, verified by row count: BR-UNI 13, BR-SEC 20, BR-PIN 10, BR-ORG 7, BR-INV 29, BR-PUR 14, BR-EVT 12, BR-FOD 12, BR-SUB 8, BR-RPT 9, BR-NTF 5, BR-AUD 8 |
+| Error codes | **27** documented (26 emitted + 1 reserved) — §14 |
 | Related | `PROJECT_BLUEPRINT.md`, `DATABASE_DESIGN.md`, `WORKFLOWS.md` |
 
 Rule identifiers (`BR-INV-01`, `BR-SEC-03`, …) are referenced from code, tests
@@ -121,7 +123,7 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | BR-INV-22 | A product with `IsExpiryTracked = true` requires an expiry date on every inbound line and a `ShelfLifeDays` on the product. |
 | BR-INV-23 | Receiving an already-expired lot is rejected unless the product is quarantined by an administrator with `inventory.stock.adjust` and a reason code. *(exact expired-stock policy: TBD-07)* |
 | BR-INV-24 | `ProductionDate` must not be after `ExpiryDate`. |
-| BR-INV-25 | Outbound allocation is FEFO: ascending expiry, then `ReceivedAtUtc`, then `Id`. Non-tracked products ignore expiry. |
+| BR-INV-25 | Outbound allocation is FEFO: ascending `ExpirySortKey`, then `FirstReceivedAtUtc`, then `Id`. Non-tracked products ignore expiry. |
 | BR-INV-26 | Explicit batch selection is allowed only by a caller with `inventory.lots.read` plus the movement permission; FEFO is the default. |
 | BR-INV-27 | Quarantined lots cannot be issued by a standard stock-out; a special permission is required. *(TBD-07)* |
 
@@ -287,7 +289,9 @@ Stable machine codes, safe to show to a user, never containing internal detail.
 | Code | HTTP | Meaning |
 |---|---|---|
 | `invalid_credentials` | 401 | Login failed (all causes) |
-| `account_locked` | 401 | *(not returned separately — folded into invalid_credentials)* |
+| `account_locked` | 401 | **Reserved, never emitted.** Account lockout is deliberately indistinguishable from a wrong password at the API surface; the terminal shows a generic message after a documented number of attempts. Kept as a documented code so the internal audit action `auth.login.locked` and the operator UI have a stable name |
+| `pin_change_required` | 428 | `PinCredential.MustChangePin` is set (admin reset): the user must set a new PIN before any warehouse operation |
+| `precondition_required` | 428 | `If-Match` missing on an endpoint that requires it |
 | `session_expired` | 401 | Session idle/absolute timeout |
 | `session_revoked` | 401 | Session revoked |
 | `token_invalid` | 401 | Signature/claims failure |
@@ -312,23 +316,31 @@ Stable machine codes, safe to show to a user, never containing internal detail.
 | `payload_too_large` | 413 | Body/limit exceeded |
 | `unsupported_media_type` | 415 | File/content type rejected |
 
+**Count: 27 documented codes — 26 potentially emitted, 1 reserved
+(`account_locked`).** The count is the contract: adding a code is additive,
+removing or repurposing one is a breaking change and needs a decision record.
+
 ---
 
 ## 15. Open business questions
 
-| ID | Question | Reference |
-|---|---|---|
-| BR-TBD-01 | Password policy specifics | TBD-01 |
-| BR-TBD-02 | Return-to-supplier flow (does it decrement stock, create a credit?) | TBD-06 |
-| BR-TBD-03 | Expired stock handling policy | TBD-07 |
-| BR-TBD-04 | Over-receipt tolerance model | TBD-08 |
-| BR-TBD-05 | Approval workflow model and thresholds | TBD-09 |
-| BR-TBD-06 | Recipe servings semantics and consumption planning basis | TBD-10 |
-| BR-TBD-07 | Subscription grace period behaviour | TBD-12 |
-| BR-TBD-08 | Audit retention | TBD-14 |
-| BR-TBD-09 | Report export localisation (Arabic/English) | TBD-15 |
-| BR-TBD-10 | Fractional quantities and base units | TBD-16 |
-| BR-TBD-11 | Barcode symbologies | TBD-18 |
-| BR-TBD-12 | Warehouse sub-locations | TBD-19 |
-| BR-TBD-13 | Transfer in-transit model | TBD-22 |
-| BR-TBD-14 | CSV delimiter/encoding for Arabic Excel | (proposal in BR-RPT-07) |
+Every item mirrors a §23 register entry and carries a disposition, so no rule in
+this document is silently unresolved. The **rule** is stated here; only the
+**policy value** is open.
+
+| ID | Question | Resolved by | Disposition in V1 |
+|---|---|---|---|
+| BR-TBD-01 | Password policy specifics | TBD-01 | Owner decision; provisional ≥ 12 chars, no composition rules. The **rule** (a policy service MUST exist) is fixed |
+| BR-TBD-02 | Return-to-supplier flow | TBD-06 | V1 = return to stock only; return-to-supplier is V1.1 |
+| BR-TBD-03 | Expired stock handling policy | TBD-07 | V1 = expired lots cannot be issued; an admin may quarantine/receive with a reason code |
+| BR-TBD-04 | Over-receipt tolerance model | TBD-08 | V1 default 0 %; over-receipt only with `AllowOverReceipt` + per-tenant percentage. Enforced by a guarded `UPDATE`, **not** a `CHECK` (ADR-0039) |
+| BR-TBD-05 | Approval workflow model and thresholds | TBD-09 | One approval step by permission + optional per-tenant amount bands |
+| BR-TBD-06 | Recipe servings semantics and consumption planning basis | TBD-10 | `ServingsPerYield` nullable; cost per serving `null` until set. Attendance = days + meals/day |
+| BR-TBD-07 | Subscription grace period behaviour | TBD-12 | Provisional 7 days, then read-only; stored per subscription |
+| BR-TBD-08 | Audit retention | TBD-14 | Provisional 24 months online, then cold archive |
+| BR-TBD-09 | Report export localisation | TBD-15 | CSV language-neutral (UTF-8 BOM, `;`, code enums); PDF/Excel Arabic-first in V1.1 |
+| BR-TBD-10 | Fractional quantities and base units | TBD-16 | Safe assumption: supported from V1, `decimal(18,4)`, 0–4 decimal places |
+| BR-TBD-11 | Barcode symbologies | TBD-18 | Design decision (ADR-0043): the six modelled values |
+| BR-TBD-12 | Warehouse sub-locations | TBD-19 | V1 has none; additive in V1.1 |
+| BR-TBD-13 | Transfer in-transit model | TBD-22 | V1 = instantaneous transfer; no virtual warehouse |
+| BR-TBD-14 | CSV delimiter/encoding for Arabic Excel | TBD-15 | **Resolved by BR-RPT-07:** UTF-8 with BOM, `;` delimiter, `.` decimal separator, ISO dates. Listed here only for traceability — it is not open |

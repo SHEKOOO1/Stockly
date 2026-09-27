@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Document | `WORKFLOWS.md` |
-| Version | 0.1.0 |
-| Status | DRAFT — Phase 0 |
+| Version | 1.0.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
 | Last updated | 2026-09-27 |
 | Related | `BUSINESS_RULES.md`, `API_CONVENTIONS.md`, `ROLES_PERMISSIONS.md` |
 
@@ -21,64 +21,102 @@ audit actions, and failure handling.
 ```text
 1. POST /api/v1/auth/login
       { emailOrUsername, password, deviceId? }
-2. Throttle check (per IP + per identity)
+2. Throttle check (per IP + per identity; the identity key is
+   HMAC-SHA256(identifier, pepper), never the plaintext)
 3. Resolve AppUser (constant time; unknown user follows the same path as a wrong
    password by hashing a dummy value to equalise timing)
-4. Verify password hash (constant-time)
+4. Verify password hash (constant-time, Argon2id)
 5. Enforce lockout / progressive delay
 6. Load Active memberships for the user
-      0 memberships → generic failure (audit: no_tenant_access)
+      0 memberships → generic failure (audit: auth.login.no_tenant_access)
+                      → a platform operator uses §1b instead
       1 membership  → continue
       >1 membership → client must call /auth/select-tenant (no token yet)
-7. Resolve the warehouse context (optional; validated against assignments)
-8. Create AuthSession (deviceId optional) + refresh token family
-9. Issue access token (15 min) + Set-Cookie refresh (HttpOnly, Secure, Strict)
+7. Resolve the warehouse context (optional; validated against assignments —
+   an unassigned warehouse is 404, not 400)
+8. Create AuthSession (SessionScope = Tenant, deviceId optional) + refresh family
+9. Issue access token (15 min, scp=tenant) + Set-Cookie refresh (HttpOnly, Secure, Strict)
 10. Audit: auth.password.login (Success|Failure)
 ```
 
 **Invariants:** identical response for every failure cause; no token issued for a
 suspended membership; device must belong to the caller's tenant.
 
-**Failures:** `401 invalid_credentials`, `429 rate_limited`, `403 token_invalid`
-(device not in tenant).
+**Failures:** `401 invalid_credentials`, `429 rate_limited`.
+
+---
+
+## 1b. Authentication — platform operator
+
+**Actor:** a person with `AppUser.IsPlatformAdmin = true`, who may belong to no
+tenant at all. Without this flow the platform cannot be operated (ADR-0034).
+
+```text
+1. POST /api/v1/platform/auth/login
+      { emailOrUsername, password }
+2. Identical throttle, password verification, and lockout as §1
+3. Require IsPlatformAdmin = true
+      false → the same generic invalid_credentials response; no session row
+4. Create AuthSession (SessionScope = Platform, TenantId = NULL, MembershipId = NULL)
+5. Issue access token (15 min, scp=platform, no tid/mid claim) + refresh cookie
+6. Audit: platform.auth.login (Success|Failure)
+```
+
+**Invariants:** a platform token cannot reach any tenant route, and a tenant
+token cannot reach any platform route. There is no cross-scope switch: the
+operator signs in again on the tenant path if they also work there.
+
+**Failures:** `401 invalid_credentials` (identical to a wrong password),
+`429 rate_limited`.
 
 ---
 
 ## 2. Authentication — PIN (shared terminal)
 
 **Actor:** a warehouse worker at a shared terminal.
+**Addressing:** the terminal is identified by its 128-bit **enrollment code**,
+not by `deviceId` and never by the human `DeviceCode` (ADR-0035). A terminal URL
+looks like `https://terminal.stockly/…/k7m2qp9xr4td`.
 
 ```text
 A. Open the terminal
-   GET  /api/v1/terminal/devices/{deviceCode}/public-info
-        → { deviceId, tenantDisplayName, displayNameRequired: true }   // no secrets
-   POST /api/v1/terminal/sessions/{deviceId}/pin-challenge
+   GET  /api/v1/terminal/sessions/{enrollmentCode}/public-info
+        → { tenantDisplayName, branding, displayNameRequired: true }  // no secrets
+   POST /api/v1/terminal/sessions/{enrollmentCode}/pin-challenge
         → { challengeId, expiresAt }    // nonce; defeats replay of a captured request
-   GET  /api/v1/terminal/sessions/{deviceId}/identities
+   GET  /api/v1/terminal/sessions/{enrollmentCode}/identities
         → [ { membershipId, displayName, avatarRef } ]   // names only, NOT authentication
+        // only memberships assigned to this device's warehouse; rate limited per
+        // IP and per code; an unknown code is indistinguishable from an empty list
 
 B. User selects their name
-   POST /api/v1/terminal/sessions/{deviceId}/pin-auth
+   POST /api/v1/terminal/sessions/{enrollmentCode}/pin-auth
         { membershipId, pin, challengeId }
-   1. Throttle check (per device + per membership + per IP)
+   1. Throttle check (per enrollment code + per device + per membership + per IP)
    2. Challenge valid and unused
-   3. Device Active + shared terminal
+   3. Enrollment code resolves to a device that is Active + shared terminal
    4. Membership Active
    5. Membership assigned to the device's warehouse
    6. PinCredential present
    7. Verify PIN hash (constant time)
-   8. MustChangePin = false (otherwise 403 pin_change_required, PIN is set here)
+   8. MustChangePin = false (otherwise 428 pin_change_required; the PIN is set here)
    9. Revoke any existing active session on the device (single-session policy)
-  10. Create AuthSession (AuthenticationMethod = Pin) + refresh family
-  11. Issue access token + refresh cookie
+  10. Create AuthSession (SessionScope = Tenant, AuthenticationMethod = Pin) + refresh family
+  11. Issue access token (scp=tenant) + refresh cookie
   12. Audit: auth.pin.login (Success|Failure) — never the PIN value
 ```
 
 **Invariants:** the selected name is not authentication; failure responses are
-indistinguishable; every failure updates the throttle ledger.
+indistinguishable; every failure updates the throttle ledger; the identities
+response never contains roles, permissions, PIN state, or account status.
 
-**Failures:** `401 invalid_credentials`, `403 pin_change_required`,
-`404 not_found` (device/identity not available), `429 rate_limited`.
+**Failures:** `401 invalid_credentials`, `428 pin_change_required`,
+`404 not_found` (unknown code, revoked device, or identity not available for this
+device — all identical), `429 rate_limited`.
+
+**Residual risk (SEC-KNW-08):** holding the enrollment code still reveals a
+staffing list. Mitigations are rate limiting, a rotatable code, a minimal
+response, and full audit; it is not eliminated in V1.
 
 ---
 
@@ -88,7 +126,8 @@ indistinguishable; every failure updates the throttle ledger.
 Every authorized request:
    validate JWT (iss, aud, exp, alg)      ─┐
    load AuthSession; must be Active        │ authorization pipeline
-   membership still Active                 │
+   scp matches the route's scope            │  (tenant routes reject scp=platform
+   membership still Active                 │   and platform routes reject scp=tenant)
    entitlement allows the module           │
    permission present                      │
    warehouse assigned                      │
@@ -102,6 +141,9 @@ Device revoked      → all its sessions revoked (immediate)
 Membership suspended→ all its sessions revoked (immediate)
 Role change         → permission cache invalidated (immediate)
 Token refresh       → rotate; reuse of a rotated token ⇒ whole family revoked + audit
+Heartbeat           → server-enforced idle-window extension; a client cannot
+                      extend a session past the absolute timeout or revive an
+                      Expired/Revoked session
 ```
 
 ---
@@ -208,18 +250,31 @@ Same posting pipeline as §5 with Direction = In.
 POST /api/v1/inventory/transfers
      { sourceWarehouseId, targetWarehouseId, lines: [...] }
 Permission: inventory.stock.transfer in BOTH warehouses
-Rules: source ≠ target; single transaction; the caller must be assigned to both.
+Rules: source ≠ target; single transaction; the caller must be assigned to both;
+       an unassigned warehouse is 404 (never 400 — no warehouse probing).
 
 Server, in ONE transaction:
-  1. Lock both StockBalance rows in a deterministic order (WarehouseId asc)
-  2. Guarded decrement in the source
+  1. Lock both StockBalance rows in a deterministic order (WarehouseId asc) to
+     make the two-warehouse deadlock impossible
+  2. Guarded decrement in the source (absolute invariant: OnHand >= 0)
   3. Guarded increment in the target
-  4. Two StockTransactions sharing one transfer reference
-  5. Two documents linked via Reference (V1: one document, two legs)
-  6. Audit both legs
+  4. ONE StockDocument (MovementType = TRANSFER) with WarehouseId = source and
+     CounterWarehouseId = target — the two legs are not two documents
+  5. Two StockTransaction rows sharing the document reference, one negative
+     (source) and one positive (target)
+  6. InventoryLot rows updated in both warehouses (FEFO keys preserved)
+  7. Audit both legs (stock.transfer.posted) + outbox notification
 ```
 
-**In-transit modelling is TBD-22.** V1 assumes instantaneous transfer.
+**Invariants:** either both warehouses move or neither does; the document's
+`CounterWarehouseId` is required when `MovementType = TRANSFER` and forbidden
+otherwise; balances are never set directly, only guarded.
+
+**In-transit modelling is §23 TBD-22 (owner decision).** V1 assumes an
+instantaneous transfer; a virtual in-transit warehouse is V2.
+
+**Failures:** `409 insufficient_stock`, `409 document_not_postable`,
+`429 rate_limited`.
 
 ---
 
@@ -409,13 +464,21 @@ Override entitlement     POST /api/v1/platform/tenants/{id}/entitlements
 Deactivate tenant        POST /api/v1/platform/tenants/{id}/deactivate
 
 Every platform action:
-  - requires platform.* permission
-  - rejects a tenant-scoped token
-  - writes an audit row with Category = Platform, Severity = Warning
+  - requires a platform-scoped token (scp=platform) AND the specific
+    platform.* code; a tenant-scoped token is rejected before authorization
+  - writes an audit row with Category = Platform, Severity = Warning, including
+    the target tenant id and the before/after values
   - invalidates the entitlement cache
+  - is never reachable with a body-supplied tenant scope; the target tenant is a
+    path parameter and is re-validated as an active platform target
 Usage evaluator (scheduled):
   recompute SubscriptionUsage; flag tenants over limit
 ```
+
+**Invariants:** a platform operator who also holds a tenant membership still
+cannot perform tenant operations with the platform token; they sign in on the
+tenant path. `IsPlatformAdmin` is the only way to set another user's
+`IsPlatformAdmin`, and it is audited (SEC-KNW-09).
 
 ---
 
@@ -424,15 +487,54 @@ Usage evaluator (scheduled):
 ```text
 Register device      POST /api/v1/tenant/devices            device.manage
                      { warehouseId, deviceCode, name, type }
+                     → server generates a 128-bit EnrollmentCode (base32url) and
+                       returns it ONCE, in plaintext, for printing/QR. It is
+                       stored in clear (it is a lookup key) and hashed in the
+                       throttle ledger. The client never chooses it.
+Rotate code          POST /api/v1/tenant/devices/{id}/rotate-code   device.manage
+                     → new code, old code dies immediately, audit
+                     → use when a code is exposed (lost/photographed terminal)
 Suspend device       POST /api/v1/tenant/devices/{id}/suspend
 Revoke device        POST /api/v1/tenant/devices/{id}/revoke
-                     → revokes all sessions bound to the device
+                     → revokes all sessions bound to the device and refuses
+                       the enrollment code
 Move to warehouse    POST /api/v1/tenant/devices/{id}/warehouse
                      { warehouseId }  device.assign_warehouse
                      → revokes sessions
-Heartbeat            POST /api/v1/terminal/devices/{deviceId}/heartbeat
-                     → updates LastSeenAtUtc (throttled)
+Heartbeat            POST /api/v1/terminal/sessions/{enrollmentCode}/heartbeat
+                     → updates LastSeenAtUtc (throttled) and extends the idle
+                       window within the absolute timeout
 ```
+
+**Invariants:** `DeviceCode` is a human label only — it is never accepted as an
+authentication key and is not unique enough to be one. All terminal routes are
+addressed by `EnrollmentCode`. A revoked device's code returns the same generic
+`404 not_found` as an unknown code.
+
+**Failures:** `404 not_found`, `409 conflict` (code rotation while a device is
+suspended), `429 rate_limited`.
+
+---
+
+## 16b. Device enrollment (operator procedure)
+
+```text
+1. Device created in a tenant (device.manage); the device is provisioned in
+   stockout state, not yet registered
+2. System generates EnrollmentCode and prints a label (QR + short human code)
+3. Operator activates the terminal and scans/typed the code at
+   /api/v1/terminal/sessions/{code}/public-info
+4. Terminal shows the tenant branding; operator confirms
+5. First authentication is a PIN set on that terminal; the PIN is not chosen by
+   the owner but by the worker during pin-challenge flow (428 flow)
+6. Rotation: device.manage rotates the code; the previous code stops working
+   immediately and existing sessions are revoked
+7. Loss/theft: revoke the device; the code is dead and all sessions end
+```
+
+Audit: `device.registered`, `device.code_rotated`, `device.revoked` with the
+actor and the affected device. The enrollment code itself is never logged, never
+emailed, and never returned by a list or get endpoint (only the masked hint).
 
 ---
 
@@ -441,10 +543,14 @@ Heartbeat            POST /api/v1/terminal/devices/{deviceId}/heartbeat
 | Rule | Statement |
 |---|---|
 | W-01 | No workflow accepts a tenant identifier from the client. |
-| W-02 | No workflow trusts a warehouse identifier without an assignment check. |
+| W-02 | No workflow trusts a warehouse identifier without an assignment check; an unassigned warehouse is 404, not 400. |
 | W-03 | No workflow trusts a price, cost, approval state, or role from the client. |
 | W-04 | Every state-changing workflow is audited in the same transaction. |
 | W-05 | Every retryable workflow accepts `Idempotency-Key`. |
 | W-06 | Every destructive-sounding action is actually a soft delete or a reversal. |
 | W-07 | Every workflow is re-authorised at execution time, not only at navigation time. |
 | W-08 | Every workflow that creates a resource also checks entitlements and usage limits. |
+| W-09 | No workflow crosses a token scope: a platform token never reaches a tenant route and a tenant token never reaches a platform route (ADR-0034). |
+| W-10 | No workflow accepts a raw identifier as an authentication key: the terminal uses `EnrollmentCode`, the server uses `Id`, and the throttle ledger uses HMACs. |
+| W-11 | No workflow mutates a balance directly; every quantity change goes through a document → guarded update → immutable ledger row. |
+| W-12 | No workflow writes a tenant-scoped row without the `TenantId` predicate in the SQL, not only in C#. |

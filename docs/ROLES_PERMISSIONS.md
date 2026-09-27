@@ -3,9 +3,11 @@
 | Field | Value |
 |---|---|
 | Document | `ROLES_PERMISSIONS.md` |
-| Version | 0.1.0 |
-| Status | DRAFT — Phase 0 |
+| Version | 1.0.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
 | Last updated | 2026-09-27 |
+| Permissions | **105** unique codes in 13 namespaces (§2) |
+| System roles | **11** tenant roles + **1** platform operator role (§3) |
 | Related | `SECURITY_ARCHITECTURE.md`, `DATABASE_DESIGN.md`, `BUSINESS_RULES.md` |
 
 ---
@@ -55,7 +57,34 @@ effective(permission, warehouse)
 Codes are dot-notation `module.resource.action`. Codes are **permanent API
 contract**; renaming a code is a breaking change requiring a decision record.
 
+**Count: 105 unique codes across 13 namespaces**
+(`platform`, `tenant`, `device`, `security`, `master`, `inventory`,
+`purchasing`, `events`, `food`, `reports`, `notifications`, `custom_fields`,
+`admin`).
+
+Per namespace: `platform` 11 · `tenant` 12 · `device` 3 · `security` 6 ·
+`master` 12 · `inventory` 13 · `purchasing` 16 · `events` 9 · `food` 6 ·
+`reports` 12 · `notifications` 2 · `custom_fields` 2 · `admin` 1 = **105**.
+
+> A permission namespace is not a database schema. The `files` and
+> `extensibility` **schemas** have no dedicated permission namespace: attachment
+> access is governed by `master.attachments.*` and custom fields by
+> `custom_fields.*`. Conversely `admin` exists as a permission namespace
+> (`admin.search`) with no table of its own. The earlier version of this
+> paragraph listed `files` and `extensibility` as namespaces and omitted
+> `custom_fields` and `admin`, which contradicted the catalogue below.
+
+> **Duplicate removed.** The previous catalogue carried both
+> `master.reason_codes.manage` (§2.4) and `inventory.reason_codes.manage`
+> (§2.5) — the same capability registered twice, which meant a role could hold
+> one and not the other. `master.reason_codes.manage` is the single code; the
+> `inventory.*` copy is removed. The catalogue now has 105 codes, and the seed
+> migration and every role matrix are updated with it (ADR-0012).
+
 ### 2.1 Platform (`platform.*`) — platform operators only
+
+Granted only through `AppUser.IsPlatformAdmin` (ADR-0034); these codes are never
+part of a tenant role and never appear in a tenant-scoped token.
 
 | Code | Dangerous | Purpose |
 |---|---|---|
@@ -129,9 +158,8 @@ contract**; renaming a code is a breaking change requiring a decision record.
 | `inventory.stock.waste` | | Post waste (requires a reason code) |
 | `inventory.stock.count` | ✔ | Create and fill in a stock count |
 | `inventory.stock.count.post` | ✔ | Post a stock count (creates adjustments) |
-| `inventory.reason_codes.manage` | ✔ | Manage reason codes |
 | `inventory.min_levels.manage` | | Per-warehouse min/max/reorder settings |
-| `inventory.reservations.manage` | | Reserve stock (V2) |
+| `inventory.reservations.manage` | | Reserve stock (V2 — seeded but not granted in V1) |
 
 ### 2.6 Purchasing (`purchasing.*`)
 
@@ -208,9 +236,14 @@ System roles are **seeded per tenant** so each tenant owns its own role rows and
 can be customised in a future version without cross-tenant coupling.
 `AuthorityLevel` is a numeric escalation guard (1 lowest, 100 highest).
 
+**Count: 11 tenant roles + 1 platform operator role.** `Platform Administrator`
+is **not** a tenant role and has no `Role` row — it is `AppUser.IsPlatformAdmin`
+(ADR-0034), and its authority is the whole `platform.*` catalogue. Listing it in
+this table with a level would suggest a tenant could grant it, which is exactly
+the escalation the design forbids.
+
 | Role | Code | Level | Scope default | Notes |
 |---|---|---|---|---|
-| Platform Administrator | *(not a tenant role)* | — | all tenants | `IsPlatformAdmin` on `AppUser` |
 | Owner | `tenant_owner` | 100 | All assigned | Full tenant authority. Cannot be removed if last |
 | Tenant Administrator | `tenant_admin` | 80 | All assigned | Users, roles, warehouses, devices, settings |
 | Warehouse Manager | `warehouse_manager` | 60 | All assigned | Full operations in assigned warehouses |
@@ -223,9 +256,22 @@ can be customised in a future version without cross-tenant coupling.
 | Auditor | `auditor` | 40 | All assigned | Read everything incl. audit; no writes |
 | Viewer | `viewer` | 10 | All assigned | Read-only operational data; no audit, no costs |
 
+Platform authority, held outside the role system:
+
+| Authority | Mechanism | Scope | Notes |
+|---|---|---|---|
+| Platform Administrator | `platform.AppUser.IsPlatformAdmin` | all tenants | Grants the 11 `platform.*` codes; token scope `platform`; no tenant access at all |
+
 ### 3.1 Role → permission matrix
 
 Legend: ● full, ○ partial/limited, – none.
+
+The matrix below lists the **33 permissions that decide the shape of the
+product** — the ones where granting or withholding changes what a role can
+*do*, not just what it can see. The remaining 72 codes are granted by the
+**derivation rule in §3.1.1** rather than enumerated here. Nothing is left
+undecided: every one of the 105 codes is either a matrix row or covered by
+§3.1.1 (ADR-0044).
 
 | Permission group | owner | admin | wh mgr | store kpr | worker | purchaser | purch mgr | kitchen | accountant | auditor | viewer |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -251,7 +297,7 @@ Legend: ● full, ○ partial/limited, – none.
 | `purchasing.requests.create` | ● | ● | ○ | ○ | – | ● | ● | – | – | – | – |
 | `purchasing.requests.approve` | ● | ● | – | – | – | – | ● | – | – | – | – |
 | `purchasing.orders.create` | ● | ● | ○ | – | – | ● | ● | – | – | – | – |
-| `purchasing.orders.approve` | ● | ● | – | – | – | – | ● | – | ○ | – | – |
+| `purchasing.orders.approve` | ● | ● | – | – | – | – | ● | – | – | ○ | – |
 | `purchasing.orders.receive` | ● | ● | ● | ● | – | – | ○ | – | – | – | – |
 | `events.manage` | ● | ● | ○ | – | – | – | – | ○ | – | – | – |
 | `events.consumption.manage` | ● | ● | ● | ○ | ○ | – | – | ● | – | – | – |
@@ -263,9 +309,73 @@ Legend: ● full, ○ partial/limited, – none.
 | `reports.export` | ● | ● | ○ | – | – | ● | ● | ○ | ○ | ○ | – |
 | `custom_fields.manage` | ● | ● | – | – | – | – | – | – | – | – | – |
 
-Matrix refinements (exact per-permission grants) live in the seeding migration,
-which is the single source of truth. The table above is the design intent; any
-divergence between it and the seed must be corrected in the seed and reviewed.
+#### 3.1.1 Derivation rule for the other 72 permissions (ADR-0044)
+
+A 105 × 11 matrix is unreadable and, hand-maintained, it rots. The other 72
+codes are therefore granted by a rule that can be evaluated mechanically. The
+rule is part of the design and is testable; the seeding migration implements it
+and nothing in it is discretionary.
+
+**Rule D1 — the four read tiers.** Every `*.read` code and every bare read-style
+code is granted to `auditor` (●) and to `viewer` (●), except where the §3.1
+matrix states otherwise or the code is cost-bearing. Read codes in scope:
+
+`tenant.read`, `tenant.users.read`, `tenant.roles.read`, `tenant.warehouses.read`,
+`tenant.subscription.read`, `device.read`, `security.sessions.read`,
+`master.categories.read`, `master.units.read`, `master.products.read`,
+`master.reason_codes.read`, `master.attachments.read`, `inventory.lots.read`,
+`inventory.min_levels.manage`*(see D4)*, `purchasing.requests.read`,
+`purchasing.orders.read`, `purchasing.suppliers.read`,
+`purchasing.supplier_products.read`, `purchasing.prices.read`,
+`events.read`, `events.consumption.read`, `events.shortage.read`,
+`events.reports.read`, `food.meal_types.read`, `food.recipes.read`,
+`reports.dashboard`, `reports.inventory`, `reports.movement`,
+`reports.consumption`, `reports.waste`, `reports.purchasing`,
+`reports.suppliers`, `reports.price_history`, `reports.events`,
+`reports.user_activity`, `custom_fields.read`, `notifications.read`.
+
+**Rule D2 — owner and admin get everything a tenant can hold.** `tenant_owner`
+receives every tenant-scoped code that is not `platform.*`. `tenant_admin`
+receives every tenant-scoped code **except** the ownership-critical and
+dangerous-write set, which it gets only where §3.1 says `●`:
+`tenant.roles.manage` (●), `tenant.audit.export`, `security.password.reset`,
+`security.lockout.manage`, `purchasing.orders.close`. This is why the owner is
+the only role that is unconditionally complete.
+
+**Rule D3 — functional ownership.** A code is granted `●` to the role whose
+stated purpose in §3 owns the resource, and `–` to every other role:
+
+| Code group | Owning role(s) |
+|---|---|
+| `tenant.settings.manage` | owner, admin |
+| `security.password.reset`, `security.lockout.manage`, `security.mfa.manage` | owner, admin |
+| `device.assign_warehouse` | owner, admin |
+| `master.categories.manage`, `master.units.manage`, `master.reason_codes.manage`, `master.barcodes.manage` | owner, admin, kitchen_manager |
+| `master.attachments.manage` | owner, admin, kitchen_manager |
+| `inventory.min_levels.manage` | owner, admin, warehouse_manager |
+| `inventory.reservations.manage` | **seeded, granted to nobody in V1** (feature is V2) |
+| `purchasing.suppliers.manage`, `purchasing.supplier_products.manage`, `purchasing.prices.manage`, `purchasing.orders.manage`, `purchasing.requests.manage`, `purchasing.orders.close` | owner, admin, purchaser, purchasing_manager |
+| `events.attendance.manage`, `events.requirements.manage`, `events.shortage.recalculate` | owner, admin, kitchen_manager |
+| `food.meal_types.manage`, `food.costing.calculate` | owner, kitchen_manager |
+| `admin.search` | owner, admin, auditor, viewer |
+| `notifications.preferences.manage` | **every role including viewer** — it is a personal setting, not a capability |
+
+**Rule D4 — cost visibility is never inherited.** Any code whose name contains
+`cost` is granted only where §3.1 shows `●` or `○` (`accountant`,
+`purchasing_manager`, `kitchen_manager` where applicable, `owner`). `auditor`
+gets `master.products.cost.read` ○ per the matrix but never `reports.purchasing`
+cost detail. `viewer` gets no cost code at all.
+
+**Rule D5 — write never follows read.** A `*.manage` or `*.create` code is
+never granted by D1. If a role is not named in D2 or D3, it does not get it.
+
+**Consequence to be tested:** `Stockly.ArchitectureTests` asserts that the
+generated grant set is exactly reproducible from the catalogue plus rules
+D1–D5, so the matrix and the rule cannot drift apart silently.
+
+The exact grant rows are produced by the seeding migration, which remains the
+single source of truth at run time. Any divergence between this section, the
+§3.1 matrix, and the seed is a defect in the seed and must be corrected there.
 
 ---
 
@@ -300,7 +410,16 @@ AppUser U1
 - `POST /inventory/stock-out` on `W-KITCHEN` → **200**
 - `POST /inventory/stock-out` on `W-CLEANING` → **404** (not assigned; existence not disclosed)
 - `POST /inventory/stock-in` on `W-KITCHEN` → **403** (no permission; also `CanReceive=0`)
-- `GET /inventory/balances?warehouseId=W-CLEANING` → **400** (invalid warehouse parameter for this user)
+- `GET /inventory/balances?warehouseId=W-CLEANING` → **404** (same reason as above)
+
+**Why 404 and not 400 for an unauthorized warehouse.** A `400` ("invalid
+warehouse parameter") confirms to the caller that the warehouse **exists** and
+that the server recognised the identifier. Together with a warehouse listing
+endpoint that enumerates codes, that is enough to map another tenant's or
+another warehouse's structure. The rule is therefore uniform: *any* `warehouseId`
+that is not in the caller's `MembershipWarehouse` is treated as non-existent —
+`404`, no detail, no timing signal. `400` is reserved for a warehouse the caller
+**is** assigned to but sent a malformed value (e.g. a non-GUID).
 
 **B. Manager of the kitchen, worker in the cleaning store**
 
@@ -359,11 +478,11 @@ displays.
 
 ## 7. Open questions
 
-| ID | Question |
-|---|---|
-| RP-TBD-01 | Should system role permission sets be editable by a `tenant_admin` in V1, or only in V2? (Currently: immutable.) |
-| RP-TBD-02 | Does a `worker` need `events.consumption.manage` by default, or is recording consumption a warehouse-manager duty? |
-| RP-TBD-03 | Is a separate `accounts_receiver` role needed (receiving without stock adjustments)? |
-| RP-TBD-04 | Do warehouses need a hierarchy (site → zone → bin) affecting the permission model? (TBD-19) |
-| RP-TBD-05 | Are approval thresholds per role or per amount band, and who defines them? (TBD-09) |
-| RP-TBD-06 | Should `platform.admin` be split into several operator roles (support read-only vs full)? |
+| ID | Question | Disposition in V1 |
+|---|---|---|
+| RP-TBD-01 | Should system role permission sets be editable by a `tenant_admin` in V1, or only in V2? | **Immutable in V1.** The API rejects edits; changing it needs a decision record |
+| RP-TBD-02 | Does a `worker` need `events.consumption.manage` by default, or is recording consumption a warehouse-manager duty? | **Granted** in the matrix above; the seed is the single source of truth |
+| RP-TBD-03 | Is a separate `accounts_receiver` role needed (receiving without stock adjustments)? | **No new role in V1.** `store_keeper` already separates `CanReceive` from `CanIssue` per warehouse |
+| RP-TBD-04 | Do warehouses need a hierarchy (site → zone → bin) affecting the permission model? | **No in V1** (TBD-19). If added, it is a filter inside `MembershipWarehouse`, not a new axis |
+| RP-TBD-05 | Are approval thresholds per role or per amount band, and who defines them? | **Per tenant configuration** (TBD-09), never per role level |
+| RP-TBD-06 | Should platform authority be split into several operator roles (support read-only vs full)? | **No in V1.** `IsPlatformAdmin` is all-or-nothing (ADR-0034); splitting it is a V2 change |

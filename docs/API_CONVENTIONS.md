@@ -3,8 +3,8 @@
 | Field | Value |
 |---|---|
 | Document | `API_CONVENTIONS.md` |
-| Version | 0.1.0 |
-| Status | DRAFT — Phase 0 |
+| Version | 1.0.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
 | Last updated | 2026-09-27 |
 | Related | `WORKFLOWS.md`, `SECURITY_ARCHITECTURE.md`, `ROLES_PERMISSIONS.md` |
 
@@ -61,6 +61,15 @@ Set-Cookie: stk_refresh=<opaque>; HttpOnly; Secure; SameSite=Strict; Path=/api/v
 - `GET /api/v1/auth/me` returns the current identity, roles, permissions,
   warehouses, and entitlements (advisory for the UI; the server still
   authorises every call).
+- **Token scope is explicit.** Every access token carries `scp` = `tenant` or
+  `platform` (ADR-0034). A `platform` token is rejected by every route outside
+  `/api/v1/platform/**`; a `tenant` token is rejected by every route inside it.
+  The scope is checked by middleware against the live `AuthSession` — never
+  trusted from the token alone.
+- **Warehouse scope is explicit.** A route that takes `warehouseId` returns
+  **`404`** when that warehouse is not in the caller's `MembershipWarehouse`.
+  `400` is reserved for a malformed value in a warehouse the caller *is*
+  assigned to. Rationale in `ROLES_PERMISSIONS.md` §4.1.
 
 ---
 
@@ -81,14 +90,18 @@ Set-Cookie: stk_refresh=<opaque>; HttpOnly; Secure; SameSite=Strict; Path=/api/v
 
 ### 4.2 Terminal (shared device)
 
+The terminal is addressed by its **enrollment code** (128-bit random, rotatable —
+ADR-0035), never by `deviceId` or the human `DeviceCode`. A terminal URL is
+delivered out of band, e.g. `https://terminal.stockly/…/k7m2qp9xr4td`.
+
 | Method | Path | Auth | Notes |
 |---|---|---|---|
-| GET | `/terminal/devices/{deviceCode}/public-info` | anonymous | tenant display name only |
-| GET | `/terminal/sessions/{deviceId}/identities` | device-scoped | names only — **not authentication** |
-| POST | `/terminal/sessions/{deviceId}/pin-challenge` | anonymous | nonce, short TTL |
-| POST | `/terminal/sessions/{deviceId}/pin-auth` | anonymous | PIN verification |
-| POST | `/terminal/sessions/{deviceId}/switch-user` | bearer | revoke + re-authenticate |
-| POST | `/terminal/devices/{deviceId}/heartbeat` | bearer | throttled last-seen |
+| GET | `/terminal/sessions/{enrollmentCode}/public-info` | anonymous | tenant display name + branding only |
+| GET | `/terminal/sessions/{enrollmentCode}/identities` | anonymous, device-scoped | `{ membershipId, displayName, avatarRef }` **only** — never an authentication grant, never roles/PIN status. Rate limited per IP and per code; identical 404/200 timing for an unknown code |
+| POST | `/terminal/sessions/{enrollmentCode}/pin-challenge` | anonymous | nonce, short TTL |
+| POST | `/terminal/sessions/{enrollmentCode}/pin-auth` | anonymous | PIN verification. Responds `428 pin_change_required` when `PinCredential.MustChangePin` is set — the user must set a new PIN before any work |
+| POST | `/terminal/sessions/{enrollmentCode}/switch-user` | bearer | revoke + re-authenticate |
+| POST | `/terminal/sessions/{enrollmentCode}/heartbeat` | bearer | throttled last-seen + idle-window extension. The code is re-resolved to a device, so a rotated or revoked code fails with the same generic `404` |
 
 ### 4.3 Tenant administration
 
@@ -118,6 +131,9 @@ PUT    /api/v1/tenant/settings
 ### 4.4 Platform
 
 ```text
+POST   /api/v1/platform/auth/login        (anonymous, pre-token)
+POST   /api/v1/platform/auth/refresh      (cookie)
+POST   /api/v1/platform/auth/logout       (bearer, platform scope)
 GET    /api/v1/platform/tenants
 POST   /api/v1/platform/tenants
 GET    /api/v1/platform/plans
@@ -127,10 +143,22 @@ POST   /api/v1/platform/tenants/{id}/subscription
 PUT    /api/v1/platform/tenants/{id}/entitlements/{featureKey}
 GET    /api/v1/platform/tenants/{id}/usage
 GET    /api/v1/platform/audit
+GET    /api/v1/platform/sessions
 ```
 
-Platform routes **reject a tenant-scoped token** even if the caller holds a role
-named similarly.
+Every route in this block requires a token with `scp = platform`, which is issued
+only by `POST /platform/auth/login` for a user with
+`AppUser.IsPlatformAdmin = true` (ADR-0034). Rules:
+
+- A tenant-scoped token is rejected here even if the caller holds a role named
+  similarly.
+- A platform-scoped token is rejected on every non-`/platform/**` route, **even
+  if the same user also has an active tenant membership**. There is no "switch to
+  tenant" from a platform token; the operator signs in again on the tenant path.
+- `TenantId` is taken from the request path, never from a body field or a
+  client-supplied header; a platform route may act on any tenant precisely
+  because the caller's authority is platform-wide, and every such call is audited
+  with the target tenant id.
 
 ### 4.5 Master data
 
@@ -273,9 +301,19 @@ Keyset (cursor) pagination, not `OFFSET`. `pageSize` 1–200, default 50.
 ?warehouseId=…            single
 ?productIds=a,b,c         multiple (max 100)
 ?from=2026-01-01&to=2026-01-31   dates, interpreted in the tenant timezone
-?includeDeleted=true      requires tenant.roles.manage
+?includeDeleted=true      requires the *resource's own* `*.manage` permission
+                          (e.g. `master.products.manage` for products,
+                          `tenant.users.manage` for users) — never a
+                          single global permission
 ?sort=-postedAt,name      allowlisted field names only
 ```
+
+> **Corrected:** the previous value was `requires tenant.roles.manage`. That made
+> role administration the gate for reading deleted products, which is neither
+> necessary (too narrow: a store keeper legitimately reconciles deleted items)
+> nor sufficient (too broad in spirit: unrelated privilege standing in for
+> data access). The rule is uniform instead: seeing soft-deleted rows of a
+> resource requires managing that resource.
 
 - Unknown query parameters are **rejected** (`400`), preventing parameter
   pollution and contract drift.
@@ -351,6 +389,7 @@ Rules:
 | `413` | Payload too large |
 | `415` | Unsupported content type / file type |
 | `422` | Reserved (unused in V1 to keep the contract small) |
+| `428` | `If-Match` missing on an endpoint that requires it (§8) |
 | `429` | Rate limited |
 | `500` | Unexpected failure — safe message + `traceId` |
 | `503` | Dependency unavailable (DB) |
@@ -413,13 +452,15 @@ If-Match: "AQAAAAIAAY="
 
 ## 10. Rate limits
 
-| Scope | Limit (proposed — TBD-04) |
+| Scope | Limit (provisional — §23 TBD-04, config-driven) |
 |---|---|
 | Global per IP | 300 req/min |
 | Auth per IP | 10 req/min |
-| Auth per identity | 5 failures / 15 min before progressive delay |
+| Auth per identity (HMAC key) | 5 failures / 15 min before progressive delay |
 | PIN per device | 5 failures / 5 min |
 | PIN per membership | 5 failures / 15 min |
+| PIN per enrollment code | 5 failures / 5 min — protects the code itself, not just the resolved device |
+| Terminal identities per IP and per code | 30 req/min (the endpoint leaks a staffing list; see SEC-KNW-08) |
 | Reports per user | 30 req/min |
 | Exports per tenant | 10 jobs/hour |
 | Body | 1 MB |
@@ -455,12 +496,15 @@ Responses include `Retry-After` (seconds) and:
 
 ## 13. Open API questions
 
-| ID | Question |
-|---|---|
-| API-TBD-01 | Cursor vs page/offset for small administrative lists |
-| API-TBD-02 | Whether `POST /auth/select-tenant` should be a separate credential-bearing step or part of login (multi-membership users) |
-| API-TBD-03 | Whether OIDC/OAuth support enters the API surface in V1 or V2 (TBD-03) |
-| API-TBD-04 | Exact rate limit numbers (TBD-04) |
-| API-TBD-05 | Whether report filters use a generic `filters` JSON object or explicit typed parameters |
-| API-TBD-06 | Whether `If-Match` is required for every update or only for posted documents |
-| API-TBD-07 | Localisation of generated PDF/Excel exports (TBD-15) |
+None of these block implementation: each one has a recorded V1 disposition. A
+disposition may change only through a new ADR.
+
+| ID | Question | V1 disposition |
+|---|---|---|
+| API-TBD-01 | Cursor vs page/offset for small administrative lists | **Keyset (cursor) pagination for every list that can grow without bound** (ledger, documents, events, users) because `OFFSET` degrades on exactly the tables the report pages read. Small, bounded administrative lists (roles, permissions, reason codes, units) may use page/offset. Sorting is restricted to an allowlist of indexed columns |
+| API-TBD-02 | Whether `POST /auth/select-tenant` is a separate credential-bearing step or part of login | **Separate step that re-presents credentials.** Login returns no token when the user has >1 active membership; the client calls `select-tenant` with the email/username + password + membership id. A partial token would leak the ambiguity and could be replayed |
+| API-TBD-03 | Whether OIDC/OAuth enters the API surface in V1 or V2 | **V2.** §23 TBD-03: local passwords + PIN only. `POST /auth/external/{provider}` is not in V1; the identity abstraction is the seam |
+| API-TBD-04 | Exact rate limit numbers | **Owner decision (§23 TBD-04).** The table in §10 is the provisional value set; all numbers are config-driven (`RateLimit__*`), so a change is configuration, not a contract change |
+| API-TBD-05 | Generic `filters` JSON object vs explicit typed parameters | **Explicit typed parameters, plus a `search` term where a full-text index backs it.** A generic JSON filter bag is a mass-assignment and query-shape risk and cannot be indexed or documented per field |
+| API-TBD-06 | Whether `If-Match` is required for every update or only for posted documents | **Every `PUT`/`PATCH` that mutates a row carrying a concurrency token requires `If-Match`**, which is every mutable master-data row and every document header. Append-only tables and new-row `POST`s do not. A missing `If-Match` is `428 precondition_required` |
+| API-TBD-07 | Localisation of generated PDF/Excel exports | **Owner decision (§23 TBD-15), provisional:** CSV is language-neutral (UTF-8 BOM, `;`); PDF/Excel Arabic-first with an English fallback |

@@ -15,7 +15,152 @@ Nothing yet.
 
 ---
 
+## [0.2.0] — 2026-09-27 — Phase 0 · Blueprint v1.0 finalisation
+
+Documentation-only. **Still no application code, no migrations, no tests.**
+The blueprint reached a final, internally consistent draft and is now
+**BLOCKED BY OWNER DECISIONS** rather than "unfinished".
+
+### Changed — status
+
+- `docs/PROJECT_BLUEPRINT.md` status is now exactly
+  `STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS`. §23 is a decision
+  register with a disposition for every item; §27 states the approval gate.
+- The 25 §23 items are reclassified: **20 owner decisions, 4 design decisions,
+  1 safe assumption**. Design and assumption items are no longer counted as
+  blocking.
+- Every secondary open-question register now carries a disposition instead of
+  being an open question: 10 `DB-TBD`, 6 `RP-TBD`, 7 `API-TBD`, 14 `BR-TBD`,
+  6 `TEST-TBD`.
+- All 43 ADRs remain **Proposed** and take effect only on ratification.
+
+### Changed — counts (supersede the 0.1.0 figures)
+
+| Quantity | 0.1.0 | 0.2.0 |
+|---|---|---|
+| Entities | 66 across 11 schemas | **66 across 12 schemas** (`ops` split out) |
+| Permissions | 107 codes / 10 namespaces | **105 codes / 13 namespaces** (one duplicate removed) |
+| System roles | 12 | **11 tenant + 1 platform operator authority** |
+| Business error codes | 25 | **27** (26 emitted + reserved `account_locked`) |
+| ADRs | 31 | **43** |
+| Delivery phases | legacy 18 | **8** (+ legacy `LEGACY-PHASE-MAP`) |
+| Workflow sections | 17 | **19** |
+| Gating security test classes | 24 | **33** (S1–S33) |
+| Security limitations | 7 | **9** (SEC-KNW-01…09) |
+
+### Security — design changes
+
+- **Platform authority is a separate token scope.** Access tokens carry a
+  required `scp` claim (`tenant` or `platform`) validated against the live
+  `AuthSession`. A platform token is rejected by every tenant route and a tenant
+  token by every `/platform/**` route, with no scope accumulation and no
+  cross-scope switch (ADR-0034). `AuthSession` gained `SessionScope`, a
+  nullable `TenantId`, and nullable `MembershipId`/`DeviceId`.
+- **Terminal addressing changed from a guessable code to a rotatable one.**
+  `Device.DeviceCode` (human label) is no longer an authentication key. A
+  server-generated 128-bit base32url `Device.EnrollmentCode` addresses all
+  terminal routes; an unknown code, a revoked device, and a rotated-away code
+  are indistinguishable `404`s (ADR-0035).
+- **Throttle identifiers are HMAC-hashed.** `LoginAttempt` stores
+  `IdentifierHash = HMAC-SHA256(identifier, serverPepper)` instead of a plain
+  hash, because a plain hash of an email address is reversible by dictionary
+  attack. Startup **fails closed** when the pepper is missing (ADR-0036).
+- **`404` instead of `403`** for a `warehouseId` the caller is not assigned to,
+  including on list queries, so an invalid parameter cannot probe another
+  warehouse.
+- Password/PIN hashing is now specified as **Argon2id** (m=64 MiB, t=3, p=2) with
+  a documented PBKDF2 fallback, replacing "Argon2id or BCrypt".
+- `scp`, tenant impersonation, and platform-flag escalation were added to the
+  privilege-escalation table, and each new identity rule has a named regression
+  test.
+- Two new limitations were registered honestly rather than absorbed:
+  **SEC-KNW-08** (the terminal identities endpoint discloses a staffing list to
+  the holder of an enrollment code) and **SEC-KNW-09** (`IsPlatformAdmin` is
+  all-or-nothing in V1).
+
+### Database
+
+- Every tenant-scoped unique index leads with `TenantId`, and the global-unique
+  exceptions are enumerated instead of implicit (ADR-0032).
+- Nullable unique keys get one filtered index per populated variant so SQL
+  Server never limits a nullable key to a single `NULL` row (ADR-0041).
+- `CHECK` constraints are restricted to **absolute** invariants. Bounds the
+  product allows to exceed (over-receipt, over-consumption) moved to guarded
+  `UPDATE`s plus an audit record, removing a contradiction where the schema
+  forbade a documented business rule (ADR-0039).
+- Provenance is modelled with typed nullable foreign keys instead of a
+  polymorphic `(SourceType, SourceId)` pair (ADR-0038).
+- Append-only tables carry no `RowVersion` and no `IsCurrent`; a mutable
+  "current" flag was removed from event food-cost snapshots (ADR-0037).
+- Barcode ownership moved from `Product` to `master.ProductBarcode`, which
+  removes the single-barcode limitation and gives per-symbology validation
+  (ADR-0033, ADR-0043).
+- Global search settled on SQL Server full-text (`Arabic_CI_AS`) plus a trigram
+  fallback, with an explicit note that a filtered index cannot call
+  `SYSUTCDATETIME()` (ADR-0042).
+- `StockBalance`/`InventoryLot` rebuild scope made explicitly partial, with
+  `IncomingQuantity` sourced from open purchase orders.
+- FEFO corrected to use persisted `ExpirySortKey`, then `FirstReceivedAtUtc`,
+  then `Id`.
+
+### Fixed
+
+- `Product.Barcode` is gone; `ProductBarcode` is the single barcode source.
+- `Event.CostSnapshotId` removed; the current snapshot is the newest
+  `CalculatedAtUtc`.
+- `Supplier.Rating` and `StockDocumentLine.BalanceAfter` removed as
+  unjustifiable columns.
+- `AuthSession` platform fields, `LoginAttempt` HMAC/enrollment fields, and
+  `Device.EnrollmentCode` added; a broken composite unique constraint on
+  `PinCredential` fixed.
+- `OPS`-schema naming, the `TBD-14` retention reference, the
+  `DEVELOPMENT_STATUS.md §18` cross-reference, and several stale role/permission
+  counts corrected.
+
+### Tests
+
+- No test exists. Nine security test classes were added to the *specification*
+  (S25–S33) covering token scope, platform login, terminal enrollment, terminal
+  disclosure, identifier hashing, warehouse probing, unique-index shape,
+  append-only enforcement, and `CHECK` scope. They are obligations, not results.
+- `Stockly.MigrationTests` added to the proposed solution structure: schema
+  guarantees such as "every unique index leads with `TenantId`" can only be
+  proven by SQL Server, not by code review.
+
+### Environment / repository
+
+- Git repository was initialised upstream: commit `9121044` "Initial commit"
+  (this entry corrects the 0.1.0 claim that Git was not initialised).
+- An **empty nested Git repository** exists at `H:\Stockly\Stockly` and is
+  untracked (`?? Stockly/`). It is recorded as ISS-04 and left untouched: it is
+  either an accidental nested repository or an intended application root, and
+  that is an owner decision, not a cleanup task.
+
+### Breaking changes
+
+None to code (none exists). Breaking **to the design contract**, all recorded in
+`DECISIONS.md`:
+
+- Terminal routes no longer accept `deviceCode`/`deviceId`.
+- `platform.*` routes require a platform-scoped token.
+- `pin_change_required` moved from `403` to `428`.
+- `account_locked` is reserved and not emitted by V1 endpoints.
+- `Product.Barcode` removed in favour of `ProductBarcode`.
+
+### Known gaps
+
+- 20 owner decisions unanswered (ISS-02); blueprint unratified (ISS-01).
+- Licence not chosen (ISS-05); all ADRs still `Proposed` (ISS-06).
+- Docker unavailable, so DB-backed suites remain unrunnable locally (ISS-03).
+
+---
+
 ## [0.1.0] — 2026-09-27 — Phase 0 Bootstrap
+
+> **Superseded in part.** The figures below describe the documents **as they were
+> written on 2026-09-27 during bootstrap**. For the current counts, decisions and
+> status see `[0.2.0]` above and `docs/DEVELOPMENT_STATUS.md`. This entry is kept
+> as the historical record and is not retro-edited.
 
 Repository bootstrap. **No application code was created.** The repository was
 inspected and found empty; the Stockly project-memory documentation was created
@@ -157,5 +302,7 @@ None (no released code).
 
 ---
 
-[Unreleased]: https://example.invalid/stockly/compare/v0.1.0...HEAD
+[Unreleased]: https://example.invalid/stockly/compare/v0.2.0...HEAD
+[0.2.0]: https://example.invalid/stockly/compare/v0.1.0...v0.2.0
+[0.1.0]: https://example.invalid/stockly/releases/tag/v0.1.0
 [0.1.0]: https://example.invalid/stockly/releases/tag/v0.1.0

@@ -11,6 +11,8 @@
 *.env.local
 secrets/
 secrets.*
+*.secret
+*.secrets
 appsettings.*.local.json
 appsettings.Local.json
 *.pfx
@@ -24,6 +26,15 @@ appsettings.Local.json
 id_rsa*
 service-account*.json
 gha-creds-*.json
+
+# NOTE: `Auth__IdentifierPepper` and token signing keys are supplied from a
+# secret store / mounted file, never committed. `.env` and `.env.*` above cover
+# the development case. Do not "fix" a missing secret by committing a value.
+
+# NOTE: the empty nested repository at ./Stockly is intentionally NOT ignored.
+# It is recorded as ISS-04 in docs/DEVELOPMENT_STATUS.md and awaits an owner
+# decision. Adding it here would silently hide it; removing the directory would
+# destroy possible user work. Both are forbidden without explicit instruction.
 
 # ---- .NET / .NET Core ------------------------------------------------------
 bin/
@@ -61,6 +72,9 @@ stats.html
 *.tsbuildinfo
 
 # ---- Service worker / PWA generated assets --------------------------------
+# Only build output. A hand-written `manifest.webmanifest` IS meant to be
+# committed; if that pattern ever becomes a problem, scope it to the build
+# output directory rather than the repository root.
 dev-dist/
 sw.js
 sw.js.map
