@@ -113,14 +113,14 @@ tests passed on this machine.
 | Blueprint status | `STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS` |
 | Code / migrations / tests | **None.** Do not create any while the gate is closed |
 | Entities / permissions / roles | 66 across 12 schemas · 105 codes in 13 namespaces · 11 tenant + 1 platform authority |
-| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · 43 (all `Proposed`) · 8 |
-| Open owner decisions | **20** (of the 25 items in `PROJECT_BLUEPRINT.md` §23; 4 design + 1 assumption are disposed) |
-| Git | Commit `9121044`, plus an **empty nested repo** at `H:\Stockly\Stockly` (ISS-04) — do not touch |
+| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · **44** (all `Proposed`) · 8 |
+| Open owner decisions | **20** (of the 25 items in `PROJECT_BLUEPRINT.md` §23.1; 4 design + 1 assumption are disposed) |
+| Git | Commits `9121044` (baseline) and `949a873` (finalization checkpoint), plus an **empty nested repo** at `H:\Stockly\Stockly` (ISS-04) — do not touch |
 
 Consequences for an agent working here right now:
 
 - **The design work is finished.** The documented final counts are listed in
-  `docs/DEVELOPMENT_STATUS.md` §2. If you change any of them, change the count in
+  `docs/DEVELOPMENT_STATUS.md` §5. If you change any of them, change the count in
   the same commit, in every document that repeats it, and add a `CHANGELOG.md`
   entry. A stale count is a defect, not a cosmetic issue.
 - **Do not start Phase 1** — not a scaffold, not a `DbContext`, not a test, not

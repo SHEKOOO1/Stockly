@@ -613,10 +613,15 @@ CHECK: `ExpiryDate IS NULL OR (ProductionDate IS NULL OR ExpiryDate >= Productio
 | LastReceivedAtUtc | datetime2(3) | NULL |
 | RowVersion | rowversion | rowv |
 
-- UX filtered: `(TenantId, WarehouseId, ProductId) WHERE BatchId IS NULL` (one
-  non-batched lot per warehouse+product). `TenantId` leads every index here
-  (ADR-0032).
-- UX filtered: `(TenantId, WarehouseId, BatchId) WHERE BatchId IS NOT NULL`.
+- UX filtered `UX_InventoryLot_NonBatched`: `(TenantId, WarehouseId, ProductId)
+  WHERE BatchId IS NULL` (one non-batched lot per warehouse+product). `TenantId`
+  leads every index here (ADR-0032).
+- UX filtered `UX_InventoryLot_Batch`: `(TenantId, WarehouseId, BatchId) WHERE
+  BatchId IS NOT NULL`. The two predicates are **mutually exclusive**, so together
+  they admit exactly one lot per (tenant, warehouse, product) for untracked
+  products and exactly one per (tenant, warehouse, batch) for tracked products.
+  Both are required: dropping the first would leave the guarded `UPDATE` in §8.1
+  with no single row to hit.
 - IX: `(TenantId, ProductId)`, `(TenantId, WarehouseId, OnHandQuantity)`.
 - CHECK: `OnHandQuantity >= 0`, `ReservedQuantity >= 0`,
   `ReservedQuantity <= OnHandQuantity`. These are absolute invariants; a
@@ -640,7 +645,8 @@ CHECK: `ExpiryDate IS NULL OR (ProductionDate IS NULL OR ExpiryDate >= Productio
 | LastCountedAtUtc | datetime2(3) | NULL (**not** ledger-rebuildable) |
 | RowVersion | rowversion | rowv |
 
-- UX: `(TenantId, WarehouseId, ProductId)` — `TenantId` leads (ADR-0032).
+- UX `UX_StockBalance`: `(TenantId, WarehouseId, ProductId)` — `TenantId` leads
+  (ADR-0032).
 - IX: `(TenantId, WarehouseId, OnHandQuantity)`, `(TenantId, ProductId)`.
 - CHECK: `OnHandQuantity >= 0`, `ReservedQuantity >= 0`,
   `ReservedQuantity <= OnHandQuantity`. Absolute invariants; a `CHECK` is correct.
@@ -1242,7 +1248,9 @@ test suite attempts escalation through every path.
 | Tenant-scoped list by page | `(TenantId, <filter columns>, Id)` including the filter columns |
 | Warehouse list of a tenant | `(TenantId, WarehouseId, IsActive)` |
 | Balance lookup for update | `UX_StockBalance (TenantId, WarehouseId, ProductId)` |
-| Lot lookup for FEFO | `UX_InventoryLot (TenantId, WarehouseId, BatchId) WHERE BatchId IS NOT NULL` + `IX_InventoryLot_FEFO (TenantId, WarehouseId, ProductId, ExpirySortKey, FirstReceivedAtUtc, Id)` |
+| Non-batched lot lookup | `UX_InventoryLot_NonBatched (TenantId, WarehouseId, ProductId) WHERE BatchId IS NULL` — the single lot row the guarded `UPDATE` in §8.1 targets for untracked products |
+| Batched lot lookup | `UX_InventoryLot_Batch (TenantId, WarehouseId, BatchId) WHERE BatchId IS NOT NULL` |
+| Lot lookup for FEFO | `IX_InventoryLot_FEFO (TenantId, WarehouseId, ProductId, ExpirySortKey, FirstReceivedAtUtc, Id) INCLUDE (OnHandQuantity)` |
 | Movement ledger by date | `(TenantId, WarehouseId, PostedAtUtc)` incl. `(ProductId, Quantity)` |
 | Ledger by product | `(TenantId, ProductId, PostedAtUtc)` |
 | Purchase orders by supplier/status | `(TenantId, SupplierId, Status)` |

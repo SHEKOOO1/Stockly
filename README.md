@@ -8,8 +8,11 @@ operations. It is **not** built around any single organization — every piece o
 business data is isolated by tenant, and warehouse-level authorization is
 enforced independently from roles.
 
-> **Current state: Phase 0 — BLUEPRINT.** No application code exists yet.
-> This repository currently contains **project memory documentation only**.
+> **Current state: Phase 0 — BLUEPRINT v1.0, blocked on owner ratification.**
+> The design is complete and internally consistent; **no application code exists
+> yet**. This repository currently contains **project memory documentation
+> only**. 20 decisions still need an owner answer before Phase 1 may begin — see
+> `docs/PROJECT_BLUEPRINT.md` §23.1 and §27.
 
 ---
 
@@ -32,7 +35,7 @@ Stockly/
     ├── API_CONVENTIONS.md       # REST API contract conventions
     ├── TESTING_STRATEGY.md      # Test pyramid, security tests, CI gates
     ├── DEVELOPMENT_STATUS.md    # CURRENT STATE (read this first)
-    ├── DECISIONS.md             # Architecture decision records (ADR-0001…)
+      ├── DECISIONS.md             # Architecture decision records (ADR-0001–ADR-0044)
     └── CHANGELOG.md             # Meaningful change history
 ```
 
@@ -77,8 +80,20 @@ Read in this order:
 | Architecture | Modular Monolith |
 | Infrastructure | Docker, Nginx reverse proxy, HTTPS/TLS, CI/CD |
 
-Implementation order: `Architecture → Database → Backend → Security → APIs →
-Tests → Frontend → Production infrastructure`.
+Implementation is organised as **8 phases** (ADR-0040), not a linear
+architecture-then-frontend sequence. Infrastructure belongs to Phase 1:
+
+1. Foundation + Architecture + Database + Security Core
+2. Identity + Tenants/Houses + Warehouses + RBAC
+3. Products + Units + Inventory Engine
+4. Devices + Shared Terminal + Purchasing + Suppliers
+5. Batches + Expiry + Waste + Transfers + Stocktake + Locations + Barcode/QR
+6. Events + Recipes + Food Cost + Forecasting
+7. Reports + Notifications + SaaS + Search + Customization
+8. Frontend PWA + Shared Terminal UI + Full System Testing + Production
+
+Security is not a phase: a security regression is a build failure at every
+phase. See `docs/PROJECT_BLUEPRINT.md` §25.
 
 ## Live project status
 

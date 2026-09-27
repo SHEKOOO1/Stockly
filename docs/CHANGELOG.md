@@ -21,6 +21,26 @@ Documentation-only. **Still no application code, no migrations, no tests.**
 The blueprint reached a final, internally consistent draft and is now
 **BLOCKED BY OWNER DECISIONS** rather than "unfinished".
 
+### Fixed — defects found while reconciling the blueprint against the design docs
+
+- **`inventory.InventoryLot` unique index was dropped from the indexing table.**
+  The entity definition declared two filtered unique indexes, but
+  `DATABASE_DESIGN.md` §7 listed only the `BatchId IS NOT NULL` variant. An
+  implementer working from §7 would have lost the
+  `(TenantId, WarehouseId, ProductId) WHERE BatchId IS NULL` guarantee, which is
+  the single row the guarded `UPDATE` in §8.1 targets for untracked products —
+  and SQL Server's NULL-distinct semantics would then have permitted duplicate
+  untracked lots. Both indexes are now named (`UX_InventoryLot_NonBatched`,
+  `UX_InventoryLot_Batch`, `UX_StockBalance`) and §4.5 and §7 agree.
+- **`CHANGELOG.md` cited a `LEGACY-PHASE-MAP` that exists nowhere** and put the
+  superseded plan at "legacy 18" phases, while ADR-0040 and the blueprint both
+  record **eleven**. Corrected to 11, pointing at `PROJECT_BLUEPRINT.md` §25.1.
+- **ADR count was 43 in three places** after ADR-0044 was added. Corrected to
+  **44** in `docs/CHANGELOG.md` and `AGENTS.md`. The `[0.1.0]` entry is a
+  historical record and still says 31, which is correct for that release.
+- **`AGENTS.md` pointed at `DEVELOPMENT_STATUS.md` §2 for the final counts**; the
+  reconstructed file carries them in §5. Reference fixed.
+
 ### Changed — status
 
 - `docs/PROJECT_BLUEPRINT.md` status is now exactly
@@ -32,7 +52,7 @@ The blueprint reached a final, internally consistent draft and is now
 - Every secondary open-question register now carries a disposition instead of
   being an open question: 10 `DB-TBD`, 6 `RP-TBD`, 7 `API-TBD`, 14 `BR-TBD`,
   6 `TEST-TBD`.
-- All 43 ADRs remain **Proposed** and take effect only on ratification.
+- All 44 ADRs remain **Proposed** and take effect only on ratification.
 
 ### Changed — counts (supersede the 0.1.0 figures)
 
@@ -42,8 +62,8 @@ The blueprint reached a final, internally consistent draft and is now
 | Permissions | 107 codes / 10 namespaces | **105 codes / 13 namespaces** (one duplicate removed) |
 | System roles | 12 | **11 tenant + 1 platform operator authority** |
 | Business error codes | 25 | **27** (26 emitted + reserved `account_locked`) |
-| ADRs | 31 | **43** |
-| Delivery phases | legacy 18 | **8** (+ legacy `LEGACY-PHASE-MAP`) |
+| ADRs | 31 | **44** |
+| Delivery phases | legacy 11 | **8** (+ the explicit legacy mapping in `PROJECT_BLUEPRINT.md` §25.1) |
 | Workflow sections | 17 | **19** |
 | Gating security test classes | 24 | **33** (S1–S33) |
 | Security limitations | 7 | **9** (SEC-KNW-01…09) |
