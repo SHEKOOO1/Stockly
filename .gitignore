@@ -1,0 +1,109 @@
+# ---------------------------------------------------------------------------
+# Stockly (ستوكلي) - .gitignore
+# Secrets, build output, local environment and tooling artifacts must never
+# be committed. See /docs/SECURITY_ARCHITECTURE.md section "Secrets Management".
+# ---------------------------------------------------------------------------
+
+# ---- Secrets / credentials -------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env.local
+secrets/
+secrets.*
+appsettings.*.local.json
+appsettings.Local.json
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
+*.jks
+*.keystore
+id_rsa*
+service-account*.json
+gha-creds-*.json
+
+# ---- .NET / .NET Core ------------------------------------------------------
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+TestResults/
+coverage/
+*.coverage
+*.coverlet.json
+*.trx
+*.coveragexml
+*.opencover.xml
+BenchmarkDotNet.Artifacts/
+
+# ---- Node / React / Vite / PWA --------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+coverage/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.eslintcache
+stats.html
+*.tsbuildinfo
+
+# ---- Service worker / PWA generated assets --------------------------------
+dev-dist/
+sw.js
+sw.js.map
+workbox-*.js
+manifest.webmanifest
+
+# ---- Database --------------------------------------------------------------
+*.mdf
+*.ldf
+*.bak
+*.db
+*.sqlite
+*.sqlite3
+db-snapshots/
+
+# ---- IDEs ------------------------------------------------------------------
+.vs/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- OS --------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+$RECYCLE.BIN/
+
+# ---- Logs / temp -----------------------------------------------------------
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+
+# ---- Docker / infra --------------------------------------------------------
+docker-compose.override.yml
+docker/data/
+docker/volumes/
+*.local.crt
+Caddyfile.local
