@@ -121,3 +121,4 @@ docker/data/
 docker/volumes/
 *.local.crt
 Caddyfile.local
+Stockly/
