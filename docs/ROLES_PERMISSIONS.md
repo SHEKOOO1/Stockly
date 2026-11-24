@@ -3,12 +3,16 @@
 | Field | Value |
 |---|---|
 | Document | `ROLES_PERMISSIONS.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
-| Permissions | **105** unique codes in 13 namespaces (§2) |
-| System roles | **11** tenant roles + **1** platform operator role (§3) |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-09-30 |
+| Permissions | **105** unique codes in 13 namespaces (§2) — unchanged by the 2026-09-30 decisions |
+| System roles | **11** tenant roles + **1** platform operator role (§3) — unchanged |
 | Related | `SECURITY_ARCHITECTURE.md`, `DATABASE_DESIGN.md`, `BUSINESS_RULES.md` |
+
+The 2026-09-30 owner decisions added **no permission code and no role**. Each
+either forbids a scope axis or fixes a default, so the 105/13/11+1 model is
+unchanged.
 
 ---
 
@@ -159,7 +163,7 @@ part of a tenant role and never appear in a tenant-scoped token.
 | `inventory.stock.count` | ✔ | Create and fill in a stock count |
 | `inventory.stock.count.post` | ✔ | Post a stock count (creates adjustments) |
 | `inventory.min_levels.manage` | | Per-warehouse min/max/reorder settings |
-| `inventory.reservations.manage` | | Reserve stock (V2 — seeded but not granted in V1) |
+| `inventory.reservations.manage` | | Reserve stock — **seeded, granted to NOBODY in V1**. Stock reservation semantics are unresolved (TBD-26 / ADR-0050), so no V1 role may hold this code and no V1 endpoint may require it. A V2 candidate only |
 
 ### 2.6 Purchasing (`purchasing.*`)
 
@@ -353,7 +357,7 @@ stated purpose in §3 owns the resource, and `–` to every other role:
 | `master.categories.manage`, `master.units.manage`, `master.reason_codes.manage`, `master.barcodes.manage` | owner, admin, kitchen_manager |
 | `master.attachments.manage` | owner, admin, kitchen_manager |
 | `inventory.min_levels.manage` | owner, admin, warehouse_manager |
-| `inventory.reservations.manage` | **seeded, granted to nobody in V1** (feature is V2) |
+| `inventory.reservations.manage` | **seeded, granted to nobody in V1** — reservation semantics unresolved (TBD-26 / ADR-0050), V2 candidate only |
 | `purchasing.suppliers.manage`, `purchasing.supplier_products.manage`, `purchasing.prices.manage`, `purchasing.orders.manage`, `purchasing.requests.manage`, `purchasing.orders.close` | owner, admin, purchaser, purchasing_manager |
 | `events.attendance.manage`, `events.requirements.manage`, `events.shortage.recalculate` | owner, admin, kitchen_manager |
 | `food.meal_types.manage`, `food.costing.calculate` | owner, kitchen_manager |
@@ -434,8 +438,12 @@ Membership M2
 - `inventory.stock.adjust` in `W-CLEANING` → **403** (worker role does not include adjust)
 - `inventory.stock.out` in `W-CLEANING` → **200** (worker scope covers all assigned)
 
-This is exactly the separation the product requires: **role and location are
-independent axes.**
+This is exactly the separation the product requires: **role and warehouse are
+independent axes** — a permission held in one warehouse grants nothing in
+another. *(The example previously called the second axis "location"; after
+TBD-19 / ADR-0045 the only warehouse-level scope axis is `WarehouseId` itself,
+because no aisle/zone/bin exists in V1 or V1.1. The separation is unchanged —
+only the vocabulary was wrong.)*
 
 ---
 
@@ -483,6 +491,6 @@ displays.
 | RP-TBD-01 | Should system role permission sets be editable by a `tenant_admin` in V1, or only in V2? | **Immutable in V1.** The API rejects edits; changing it needs a decision record |
 | RP-TBD-02 | Does a `worker` need `events.consumption.manage` by default, or is recording consumption a warehouse-manager duty? | **Granted** in the matrix above; the seed is the single source of truth |
 | RP-TBD-03 | Is a separate `accounts_receiver` role needed (receiving without stock adjustments)? | **No new role in V1.** `store_keeper` already separates `CanReceive` from `CanIssue` per warehouse |
-| RP-TBD-04 | Do warehouses need a hierarchy (site → zone → bin) affecting the permission model? | **No in V1** (TBD-19). If added, it is a filter inside `MembershipWarehouse`, not a new axis |
+| RP-TBD-04 | Do warehouses need a hierarchy (site → zone → bin) affecting the permission model? | ✅ **DECIDED 2026-09-30 (TBD-19 / ADR-0045):** **no.** V1 and V1.1 have no warehouse hierarchy, so `MembershipWarehouse` is the last scope axis and the permission model is unchanged. V1.1 descriptive sub-locations are **not** a permission axis: they own no stock and grant nothing. If location-level stock ever ships (V2 redesign), it MUST be a **new assignment axis with its own authorization check** — never a filter inside an already-authorized warehouse |
 | RP-TBD-05 | Are approval thresholds per role or per amount band, and who defines them? | **Per tenant configuration** (TBD-09), never per role level |
 | RP-TBD-06 | Should platform authority be split into several operator roles (support read-only vs full)? | **No in V1.** `IsPlatformAdmin` is all-or-nothing (ADR-0034); splitting it is a V2 change |

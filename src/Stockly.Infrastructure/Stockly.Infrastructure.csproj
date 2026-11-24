@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Stockly.Application\Stockly.Application.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+    <!--
+      Remediation, not suppression. Microsoft.EntityFrameworkCore.Design pulls
+      Microsoft.CodeAnalysis.Workspaces.MSBuild, which pins
+      System.Security.Cryptography.Xml to 9.0.0 — a version with open
+      high-severity advisories (GHSA-6588-8gv4-xfgh and seven others).
+      The dependency is build-time only (Design is PrivateAssets=all), but a
+      vulnerable package in the restore graph is still a restore-graph
+      vulnerability, so the pin is raised to a patched line rather than the
+      advisory being downgraded (AGENTS.md §4: never weaken security to make a
+      build pass).
+    -->
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.13">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

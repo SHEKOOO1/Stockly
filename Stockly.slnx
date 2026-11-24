@@ -1,0 +1,21 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Stockly.Api/Stockly.Api.csproj" />
+    <Project Path="src/Stockly.Application/Stockly.Application.csproj" />
+    <Project Path="src/Stockly.Domain/Stockly.Domain.csproj" />
+    <Project Path="src/Stockly.Infrastructure/Stockly.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Stockly.ArchitectureTests/Stockly.ArchitectureTests.csproj" />
+    <Project Path="tests/Stockly.ConcurrencyTests/Stockly.ConcurrencyTests.csproj" />
+    <Project Path="tests/Stockly.IntegrationTests/Stockly.IntegrationTests.csproj" />
+    <Project Path="tests/Stockly.MigrationTests/Stockly.MigrationTests.csproj" />
+    <Project Path="tests/Stockly.SecurityTests/Stockly.SecurityTests.csproj" />
+    <!--
+      Shared fixture for the four database-dependent suites. No tests live here; it
+      is referenced so the SQL Server fixture has exactly one implementation.
+    -->
+    <Project Path="tests/Stockly.StocklyDbTestSupport/Stockly.StocklyDbTestSupport.csproj" />
+    <Project Path="tests/Stockly.UnitTests/Stockly.UnitTests.csproj" />
+  </Folder>
+</Solution>

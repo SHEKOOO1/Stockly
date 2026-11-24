@@ -3,18 +3,33 @@
 | Field | Value |
 |---|---|
 | Document | `PROJECT_BLUEPRINT.md` |
-| Status | **STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS** |
-| Version | 1.0.0 |
-| Last updated | 2026-09-27 |
-| Phase | 0 — Blueprint (finalised design, awaiting owner ratification) |
+| Status | **STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1** |
+| Version | 1.1.0 |
+| Last updated | 2026-09-30 |
+| Ratified | 2026-09-30 — by the product owner, in full (ADR-0001 – ADR-0050) |
+| Phase | 1 — Foundation + Architecture + Database + Security Core (**ready to begin**; not started) |
 | Authority | This document is the master specification. `DATABASE_DESIGN.md`, `ARCHITECTURE.md`, `SECURITY_ARCHITECTURE.md`, `ROLES_PERMISSIONS.md`, `BUSINESS_RULES.md`, `WORKFLOWS.md`, `API_CONVENTIONS.md` and `TESTING_STRATEGY.md` are its detailed expansions. If they conflict, the conflict must be raised and resolved here, not silently in a sub-document. |
 
-**Why this document is marked BLOCKED.** The design work is complete: 66
-entities, 105 permissions, 44 architecture decision records, 147 business rules
-and 8 delivery phases are specified and internally consistent. Twenty (§23)
-questions remain for the product owner. Phase 1 MUST NOT begin until the owner
-ratifies this blueprint and answers or explicitly defers each of those twenty
-items with a recorded decision in `DECISIONS.md` (§27).
+**This blueprint is ratified.** The design work is complete: 66 entities,
+105 permissions, 50 architecture decision records, 147 business rules and
+8 delivery phases are specified and internally consistent. The product owner
+ratified the whole of v1.1 on **2026-09-30**: ADR-0001 – ADR-0050 are all
+`Accepted` (`DECISIONS.md`), and SEC-KNW-01 – SEC-KNW-09 are explicitly
+acknowledged as accepted V1 limitations (`SECURITY_ARCHITECTURE.md` §15).
+
+**Five owner decisions were taken on 2026-09-30 and are in force**
+(`DECISIONS.md` ADR-0045 – ADR-0050): warehouse locations (TBD-19),
+currency (TBD-21), transfer semantics (TBD-22), legal entities (TBD-24) and the
+scale target (TBD-25). A new open item, **TBD-26 (stock reservations)**, was
+created by splitting the overloaded TBD-10.
+
+**Zero Phase 1 decision blockers remain** (§23.1). **Ratification does not
+resolve any `TBD`.** The 16 still-open items were open before ratification and
+are open after it: they remain phase-gated to Phase 2 or later, or explicitly
+future/deferred scope (§23.1), and each keeps its existing gate. Ratification
+neither decided them nor advanced any of them. It is not a statement that all
+future decisions have been made — it approves the specification that governs the
+work, not the answers to every question that will arise while doing it.
 
 ---
 
@@ -31,8 +46,11 @@ Conventions used throughout:
 - `MUST` / `MUST NOT` — mandatory, non-negotiable product or security rules.
 - `SHOULD` / `SHOULD NOT` — strong recommendations, deviation requires a decision record.
 - `TBD` — unresolved, requires owner answer, tracked in `DECISIONS.md` when resolved.
-- `ADR-xxxx` — a decision record in `DECISIONS.md`. All 44 are `Proposed`; they
-  take effect only on owner ratification (§27).
+- `ADR-xxxx` — a decision record in `DECISIONS.md`. ADR-0001 – ADR-0050 are all
+  `Accepted` as of the 2026-09-30 ratification (§27): ADR-0045 – ADR-0050 record
+  explicit owner decisions, and ADR-0001 – ADR-0044 were promoted from `Proposed`
+  by that ratification. A future ADR may still be created `Proposed` and take
+  effect on its own approval.
 - `V1` / `V1.1` / `V2` / `V3` — release scope tiers (see §24).
 
 ---
@@ -121,6 +139,11 @@ These MUST NOT be collapsed into one model. In particular:
   use it over time; none of them own it.
 - A **session scope** is not a role. A platform operator's session has no tenant
   and no membership (ADR-0034, §7.2); a tenant session always has both.
+- **One `Tenant` is one legal/business entity** (ADR-0048 / TBD-24, decided
+  2026-09-30). There is no parent-tenant hierarchy and no legal-entity
+  subdivision inside a tenant. An organisation that needs two legal entities uses
+  two tenants. This keeps `TenantId` the single organizational boundary that leads
+  every unique index (`ADR-0032`) and the single scope taken from the session.
 
 ---
 
@@ -140,8 +163,12 @@ These MUST NOT be collapsed into one model. In particular:
 | 10 | **Search & Customization** | Global search, custom fields, attachments, OCR-ready file architecture | V1 (global search) / V1.1 (custom fields, attachments) / V2 (OCR) |
 | 11 | **Localization** | Arabic + English, RTL + LTR | V1 |
 
-Sub-locations (aisles/bins/racks) are **V1.1**, not V1 (TBD-19, owner decision
-recorded in `DATABASE_DESIGN.md` DB-TBD-02).
+**Warehouse sub-locations are decided (ADR-0045 / TBD-19).** V1 has **no
+sub-locations at all** and inventory is **warehouse-level**: `WarehouseId` is the
+finest stock scope. **V1.1** may add **descriptive** sub-locations only — an
+operator-facing label attached to a warehouse, which owns no stock. True
+bin/location-level **stock ownership** is a **V2 redesign**, not a V1 or V1.1
+addition. This decision adds no entity and changes no index.
 
 ---
 
@@ -235,10 +262,14 @@ are also removed in V1 — see `DECISIONS.md` for the disposition of each.
 | `StockCount` | `Id` | W | Stocktake session header |
 | `StockCountLine` | `Id` | W | Expected vs counted quantity, variance, resolution |
 
-`StockReservation` for event planning is **deferred to V2** (TBD-10) — see §24.
-`StockBalance.ReservedQuantity` and `InventoryLot.ReservedQuantity` exist and
-are always `0` in V1, so the shortage formula is already correct when
-reservations arrive.
+`StockReservation` is **not a V1 entity**. Stock reservation semantics are
+**unresolved future scope**, tracked as **TBD-26** and classified as a **V2
+candidate pending that owner decision** (§24, ADR-0050). Whether reservations are
+hard (blocking) or soft (advisory) is **not decided** and MUST NOT be assumed.
+`StockBalance.ReservedQuantity` and `InventoryLot.ReservedQuantity` exist and are
+always `0` in V1, so the shortage formula is already correct when reservations
+arrive. The permission code `inventory.reservations.manage` is seeded and
+**granted to nobody in V1** (ADR-0044 rule D3).
 
 ### 4.6 Purchasing (`purchasing` schema)
 
@@ -625,7 +656,7 @@ Anyone writing a "full rebuild" story that claims row equality is wrong.
 | `STOCK_IN` | + | Increase | Goods receipt, manual receipt |
 | `STOCK_OUT` | − | Decrease | Consumption, issue |
 | `RETURN` | + | Increase | Return from consumption; or − if returning to supplier (**TBD-06**) |
-| `TRANSFER` | − / + | Move between warehouses | Paired transactions, same reference, one atomic transaction; no in-transit state in V1 (**TBD-22** disposition) |
+| `TRANSFER` | − / + | Move between warehouses | Paired transactions, same reference, one atomic transaction; source and destination are both warehouses of the same tenant. **Instantaneous in V1 — no in-transit state, no virtual warehouse, no transfer state machine** (decided: ADR-0047 / TBD-22) |
 | `ADJUSTMENT` | + / − | Correct | Requires `ReasonCode` and elevated permission |
 | `WASTE` | − | Decrease | Requires `ReasonCode`; separately reportable |
 | `COUNT` | Derived | Reconciliation | Produced by posting a `StockCount`; generates `ADJUSTMENT` transactions |
@@ -762,7 +793,9 @@ Event rules (MUST):
    meal types served, and per-person consumption factors — all tenant-configurable.
 2. Shortage = `required − (on-hand + reserved/committed + inbound on open POs)`.
    `ReservedQuantity` is `0` in V1, so the term is structurally present and
-   correct before reservations arrive in V2.
+   correct before reservations arrive. **Reservation semantics are unresolved
+   future scope under TBD-26** (ADR-0050); V1 MUST NOT assume hard or soft
+   reservations.
 3. A shortage MAY generate a draft `PurchaseRequest`; generating it requires
    `purchasing.requests.create` — recommendations themselves only require
    `events.shortage.read`.
@@ -809,8 +842,12 @@ Costing rules (MUST):
    a new snapshot; it never rewrites history.
 6. Costing must be computed with a consistent view of price and quantity data
    inside a single transaction to avoid mixed-snapshot results.
-7. Tenant currency is **single** per tenant in V1; there is no FX table
-   (TBD-21 disposition).
+7. Tenant currency is **single** per tenant in V1. There is **no FX table, no FX
+   rate and no conversion logic of any kind**; all monetary values are interpreted
+   in the tenant's configured `CurrencyCode`. **Decided: ADR-0046 / TBD-21.**
+   Currency columns on documents and suppliers are **informational only** and
+   MUST NOT trigger a conversion. Multi-currency/FX is future scope and must not
+   leak into the V1 schema or workflows.
 
 ---
 
@@ -948,6 +985,13 @@ Boundary rules (MUST):
    warehouse assignment scope.
 5. Errors are RFC 9457 ProblemDetails (ADR-0027). A guarded `UPDATE` that
    matches no row is `409`; a precondition-required flow is `428`.
+6. List endpoints MUST use **keyset (cursor) pagination** for any collection that
+   can grow without bound, sized against the V1 engineering scale target of
+   **~100 k products and ~10 M ledger rows per tenant** (ADR-0049). `OFFSET`
+   pagination is permitted only on small, bounded administrative lists. Report
+   and export endpoints MUST enforce a row cap and a time-window cap
+   (`BR-RPT-06`). **These are engineering targets, not subscription limits**
+   (§23.4, TBD-25).
 
 ---
 
@@ -985,6 +1029,12 @@ Boundary rules (MUST):
 
 **MUST NOT** use: distributed locks, in-process locks as correctness guarantees,
 application-level read-then-write without a guard, or `ReadUncommitted`.
+
+The guarded `UPDATE` is the only correctness mechanism assumed to hold under the
+V1 engineering scale target of **~10 M inventory ledger rows and ~200 concurrent
+users per tenant** (ADR-0049). A concurrency test that passes at toy data volumes
+has proved nothing; the suite is run against a generated dataset at that scale
+(`TESTING_STRATEGY.md` TEST-TBD-02).
 
 ---
 
@@ -1026,40 +1076,92 @@ translated because they are tenant data, not product strings.
 
 ## 23. Open requirements register
 
-The 25 items originally raised are **disposed as follows**. Nothing here is a
+The 26 items currently tracked are **disposed as follows**. Nothing here is a
 silent open question, and nothing here may be invented by an implementer.
 
 | Disposition | Count | Items |
 |---|---|---|
-| **Owner decision — UNRESOLVED** | **20** | TBD-01, TBD-03, TBD-04, TBD-05, TBD-06, TBD-07, TBD-08, TBD-09, TBD-10, TBD-11, TBD-12, TBD-13, TBD-14, TBD-15, TBD-19, TBD-21, TBD-22, TBD-23, TBD-24, TBD-25 |
+| **Owner decision — DECIDED** | 5 | TBD-19, TBD-21, TBD-22, TBD-24, TBD-25 |
+| **Owner decision — UNRESOLVED** | 16 | TBD-01, TBD-03, TBD-04, TBD-05, TBD-06, TBD-07, TBD-08, TBD-09, TBD-10, TBD-11, TBD-12, TBD-13, TBD-14, TBD-15, TBD-23, TBD-26 |
 | **Design decision — disposed** | 4 | TBD-02, TBD-17, TBD-18, TBD-20 |
 | **Safe assumption — disposed** | 1 | TBD-16 |
-| **Total** | **25** | |
+| **Total** | **26** | |
 
-### 23.1 Unresolved owner decisions (block Phase 1)
+Two bookkeeping changes moved the register from 25 items to 26:
 
-| ID | Question | Blocks |
+- **Five items moved from UNRESOLVED to DECIDED** on 2026-09-30 by explicit
+  product-owner decision. Each has an `Accepted` ADR. See §23.4.
+- **TBD-26 was created by splitting TBD-10.** TBD-10 had been overloaded and was
+  cited for four unrelated questions. It now covers **only** recipe
+  serving/yield semantics, consumption-planning semantics, and the related
+  product pack-size rounding behaviour. Stock reservations moved out to
+  **TBD-26** (`DECISIONS.md` ADR-0050).
+
+### 23.1 Unresolved owner decisions and phase gates
+
+Not every unresolved item blocks Phase 1. This section separates **Phase 1
+blockers** from **phase-gated decisions** (answered before the phase that
+implements them) and **future/deferred decisions**.
+
+#### Phase 1 blockers — none outstanding
+
+A decision is a Phase 1 blocker only if Phase 1 must encode it in the initial
+migration, the security spine, or the seeding data, and cannot change it later
+without a redesign.
+
+| ID | Question | Status |
 |---|---|---|
-| TBD-01 | Password policy: minimum length, complexity, breach-list check, rotation? | Identity |
-| TBD-03 | Allowed identity providers for V1: local passwords only, or OIDC/SAML from day one? | Identity |
-| TBD-04 | Exact PIN brute-force thresholds (delay curve, lock duration, attempt budget per device/membership/IP). | Security |
-| TBD-05 | Idle/absolute session timeouts for terminals vs office sessions. | Security |
-| TBD-06 | `RETURN` semantics: return from customer, return to supplier, or both? Does a supplier return reduce stock? | Inventory |
-| TBD-07 | Near-expiry warning window and policy for expired stock (block issue? auto-waste?). | Inventory |
-| TBD-08 | Over-receipt tolerance per PO line, and whether suppliers commonly over-deliver. | Purchasing |
-| TBD-09 | Approval threshold model: fixed amounts, role hierarchy, or both? Who is the final approver? | Purchasing |
-| TBD-10 | Recipe semantics: `servingsPerYield`, and whether consumption planning is per meal type, per day, or per person. | Food / Events |
-| TBD-11 | Concurrent-session policy per device: single active session (kiosk) or multiple? | Identity |
-| TBD-12 | Subscription grace period and what happens at expiry (read-only vs lockout). | Platform |
-| TBD-13 | Billing: is there an external payment provider, or operator-managed subscription state? | Platform |
-| TBD-14 | Audit retention period and archive destination. | Compliance |
-| TBD-15 | Localization scope for reports/PDF/Excel: Arabic, English, or both from day one? | Reporting |
-| TBD-19 | Warehouses need sub-locations (aisles/bins/racks) in V1 or V1.1? | Organization |
-| TBD-21 | Currency: single currency per tenant, or multi-currency with FX rates? | Platform |
-| TBD-22 | Warehouse transfers in transit: is there an "in transit" virtual warehouse, or is transfer instantaneous? | Inventory |
-| TBD-23 | Should event attendance be integrated with an external registration system? | Events |
-| TBD-24 | Are there multiple business entities/legal structures inside one tenant? | Platform |
-| TBD-25 | Reporting scale target (rows/users/warehouses) to size indexes and pagination. | Performance |
+| TBD-19 | Warehouse sub-locations (aisles/bins/racks) in V1? | ✅ **DECIDED 2026-09-30** — no location-level inventory in V1; warehouse-level stock; descriptive sub-locations V1.1; location-level stock is a V2 redesign (ADR-0045) |
+| TBD-21 | Single currency per tenant, or multi-currency with FX rates? | ✅ **DECIDED 2026-09-30** — one currency per Tenant; no multi-currency; no FX table or conversion (ADR-0046) |
+| TBD-22 | In-transit virtual warehouse, or instantaneous transfer? | ✅ **DECIDED 2026-09-30** — instantaneous; atomic source decrement + destination increment; no in-transit state (ADR-0047) |
+| TBD-24 | Multiple business/legal entities inside one tenant? | ✅ **DECIDED 2026-09-30** — one Tenant is one legal entity; no parent-tenant hierarchy; future non-goal (ADR-0048) |
+| TBD-25 | Reporting/scale target to size indexes and pagination? | ✅ **DECIDED 2026-09-30** — ~50 warehouses, ~100 k products, ~10 M ledger rows, ~200 concurrent users; engineering targets, **not** subscription limits (ADR-0049) |
+
+**Result: no Phase 1 blocker remains open.** The Phase 1 foundations — 12
+schemas, the tenant-isolation data access layer, the security spine, seeding — are
+fully determined by the decisions above together with ADR-0040 and ADR-0044.
+
+> **The ratification gate is closed.** The product owner ratified this blueprint
+> and ADR-0001 – ADR-0050 in full on 2026-09-30 (§27), and acknowledged
+> SEC-KNW-01 – SEC-KNW-09 as accepted V1 limitations. Phase 1 is **authorised
+> to begin** and has **not begun** — no code, migration, test or frontend exists
+> yet. The open items below are untouched by that ratification and stay open at
+> their named phase.
+
+#### Phase-gated decisions — open, each gated on a named phase
+
+| Gate phase | ID | Question | Domain |
+|---|---|---|---|
+| **2** — Identity + RBAC | TBD-01 | Password policy: minimum length, complexity, breach-list check, rotation? | Identity |
+| **2** | TBD-03 | Allowed identity providers for V1: local passwords only, or OIDC/SAML from day one? | Identity |
+| **2** | TBD-04 | Exact PIN brute-force thresholds (delay curve, lock duration, attempt budget per device/membership/IP). | Security |
+| **2** | TBD-05 | Idle/absolute session timeouts for terminals vs office sessions. | Security |
+| **2** | TBD-11 | Concurrent-session policy per device: single active session (kiosk) or multiple? | Identity |
+| **3** — Inventory Engine | TBD-06 | `RETURN` semantics: return from customer, return to supplier, or both? Does a supplier return reduce stock? | Inventory |
+| **4** — Purchasing | TBD-08 | Over-receipt tolerance per PO line, and whether suppliers commonly over-deliver. | Purchasing |
+| **4** | TBD-09 | Approval threshold model: fixed amounts, role hierarchy, or both? Who is the final approver? | Purchasing |
+| **5** — Batches + Expiry | TBD-07 | Near-expiry warning window and policy for expired stock (block issue? auto-waste?). | Inventory |
+| **6** — Events + Food | TBD-10 | Recipe semantics: `servingsPerYield`, consumption-planning basis (per meal type, per day, or per person), and the related product pack-size rounding behaviour. **Does not cover stock reservations — see TBD-26.** | Food / Events |
+| **7** — Reports + SaaS | TBD-12 | Subscription grace period and what happens at expiry (read-only vs lockout). | Platform |
+| **7** | TBD-15 | Localization scope for reports/PDF/Excel: Arabic, English, or both from day one? | Reporting |
+| **8** — Production | TBD-14 | Audit retention period and archive destination. | Compliance |
+
+Each is answerable later **without a schema rewrite**: the affected columns,
+configuration rows and services already exist, and every deferred option is
+additive. The gate exists so the value is chosen **before** the code that depends
+on it is written — not to imply the design is incomplete.
+
+#### Future / deferred decisions — open, no phase scheduled
+
+| ID | Question | Domain | Disposition |
+|---|---|---|---|
+| TBD-13 | Billing: is there an external payment provider, or operator-managed subscription state? | Platform | §24: V1 has no payment processing |
+| TBD-23 | Should event attendance be integrated with an external registration system? | Events | Not in any §24 tier — no integration in V1 |
+| TBD-26 | Stock reservation semantics for event planning: hard (blocking) or soft (advisory)? When is a reservation released? What is its lifecycle? | Inventory / Events | **V2 candidate — pending this decision** (ADR-0050). Not a V1 entity; `ReservedQuantity` is always `0` in V1 |
+
+**TBD-26 is deliberately under-specified.** No reservation design has been
+adopted. An implementer MUST NOT infer hard/soft semantics, a lifecycle, or a
+release rule from the existence of the `ReservedQuantity` columns.
 
 ### 23.2 Disposed design decisions
 
@@ -1076,6 +1178,34 @@ silent open question, and nothing here may be invented by an implementer.
 |---|---|---|---|
 | TBD-16 | Are fractional quantities required from V1, and which base units? | **Safe superset:** `decimal(18,4)` everywhere and `Unit.DecimalPlaces` 0–4. The V1 schema already supports fractional quantities, so an owner answer requiring them needs no redesign — and an answer forbidding them is not a simplification. | DB-TBD-01 |
 
+### 23.4 Owner decisions taken (DECIDED)
+
+These five items were open owner decisions and are now **closed by explicit
+product-owner decision on 2026-09-30**. Each has an `Accepted` ADR in
+`DECISIONS.md` and is in force. They are recorded here, not deleted, so the
+decision history stays traceable.
+
+| ID | Question as originally asked | Owner decision | Effective | Record |
+|---|---|---|---|---|
+| TBD-19 | Do warehouses need sub-locations (aisles/bins/racks) in V1 or V1.1? | **No location-level inventory in V1.** V1 inventory is warehouse-level; `WarehouseId` is the finest stock scope. V1.1 may add **descriptive** sub-locations only, which own no stock. Location-level **stock ownership** is a **V2 redesign**, not a V1/V1.1 addition. | V1 | **ADR-0045** |
+| TBD-21 | Single currency per tenant, or multi-currency with FX rates? | **One currency per Tenant in V1.** No multi-currency, no FX table, no conversion logic. Monetary values are interpreted in the tenant's configured currency. Future scope; must not leak into the V1 schema or workflows. | V1 | **ADR-0046** |
+| TBD-22 | Is there an "in transit" virtual warehouse, or is transfer instantaneous? | **Transfers are instantaneous in V1.** No virtual/in-transit warehouse and no transfer-in-transit state machine. A transfer atomically decreases source and increases destination, and remains fully auditable. | V1 | **ADR-0047** |
+| TBD-24 | Are there multiple business/legal structures inside one tenant? | **One Tenant is one legal/business entity.** Multiple legal entities inside one tenant are not supported. No parent-tenant or legal-entity hierarchy. Multi-entity is a future non-goal. | V1 | **ADR-0048** |
+| TBD-25 | What reporting scale target should size indexes and pagination? | **~50 warehouses, ~100 k products, ~10 M inventory ledger rows, ~200 concurrent users per tenant.** Engineering/design targets for indexing, query design, pagination, reporting, ledger partitioning, performance tests and database architecture. **Not commercial limits and not subscription limits.** | V1 | **ADR-0049** |
+
+**None of these five decisions changes the V1 schema.** The entity count remains
+**66** across **12 schemas**, the permission count remains **105** in **13
+namespaces**, the role model remains **11 tenant + 1 platform**, and the business
+rule count remains **147**. Each decision either forbids a feature or fixes a
+default; none introduces one.
+
+### 23.5 Reservation deferral recorded under TBD-26
+
+`StockReservation` is **not a V1 entity** and appears in no V1 table, index or
+seed. Reservation semantics are an **open owner decision under TBD-26**, recorded
+as a **V2 candidate** in §24. ADR-0050 documents the deferral and the reason the
+question was separated from TBD-10.
+
 ---
 
 ## 24. V1 / V1.1 / V2 / V3 boundaries
@@ -1083,9 +1213,19 @@ silent open question, and nothing here may be invented by an implementer.
 | Tier | Scope |
 |---|---|
 | **V1** | Platform/tenants/plans/subscriptions/entitlements; identity (users, memberships, roles, permissions, sessions, refresh tokens, password auth, PIN auth, lockout, rate limiting, devices); warehouses and assignments; master data (categories, units, conversions, products, barcodes, reason codes); inventory (balances, batches, expiry, FEFO, stock in/out/return/transfer/adjust/waste, stocktake, ledger); purchasing (suppliers, price history, requests, approvals, orders, partial receiving); events (events, requirements, consumption, attendance, shortage, recommendations); food (meal types, recipes, costing, event food cost); reporting (dashboard, inventory, movement, consumption, waste, purchase, supplier, price history, event, user activity) + CSV export; global search; audit log; Arabic/English UI |
-| **V1.1** | PDF + Excel export; custom fields; attachments; in-app + PWA push notifications; per-warehouse min/max stock; expiry dashboards; warehouse sub-locations; device management UI hardening; ClamAV hook (SEC-KNW-06) |
-| **V2** | OCR ingestion; stock reservations for event planning; supplier performance scoring; dedicated search engine if needed; multi-currency and FX; two-factor authentication; SSO/OIDC; in-transit virtual warehouse; device attestation or per-device client certificate (SEC-KNW-01); terminal display-name aliases (SEC-KNW-08); split platform operator roles (SEC-KNW-09); scheduled report delivery |
+| **V1.1** | PDF + Excel export; custom fields; attachments; in-app + PWA push notifications; per-warehouse min/max stock; expiry dashboards; **descriptive** warehouse sub-locations (ADR-0045 — descriptive only, no stock ownership; `WarehouseId` remains the stock scope); device management UI hardening; ClamAV hook (SEC-KNW-06) |
+| **V2** | OCR ingestion; supplier performance scoring; dedicated search engine if needed; multi-currency and FX; two-factor authentication; SSO/OIDC; in-transit virtual warehouse; location-level stock ownership (ADR-0045 — a redesign, not an extension); device attestation or per-device client certificate (SEC-KNW-01); terminal display-name aliases (SEC-KNW-08); split platform operator roles (SEC-KNW-09); scheduled report delivery |
 | **V3** | Public API for third parties; mobile native apps; advanced forecasting; external POS/ERP integrations; multi-entity consolidation |
+
+**V2 candidate — pending an owner decision, not a decided V2 feature:**
+
+| Item | State |
+|---|---|
+| **Stock reservations for event planning** | **TBD-26 — UNRESOLVED.** V2 candidate, pending owner decision (ADR-0050). No reservation design has been adopted; hard vs soft is undecided. `ReservedQuantity` is always `0` in V1 and `inventory.reservations.manage` is seeded but granted to nobody. |
+
+**Decided out of scope for V1** (see §23.4): warehouse location-level inventory
+(ADR-0045), multi-currency and FX (ADR-0046), in-transit transfer accounting
+(ADR-0047), multi-entity tenants (ADR-0048).
 
 Explicitly **out of scope for all tiers** unless a future decision says otherwise:
 microservices, AI assistant features inside the product, blockchain, self-service
@@ -1100,16 +1240,46 @@ Delivery is **Phase 0 (this blueprint) plus eight implementation phases**
 infrastructure belongs in Phase 1 where it is cheap to do properly — not in the
 last phase where it is guaranteed to be rushed.
 
+**Phases are not release tiers.** §24 defines what ships in V1, V1.1 and V2;
+this table defines the order of *work*. Phases 1–7 build V1 and the V1.1 items
+that fall out of the same modules (PDF/Excel export, custom fields, attachments,
+push notifications) because they share their tables, services and tests, and
+Phase 8 is full-system testing and production. A phase is therefore **not** "V1"
+or "V1.1" — use §24 to decide what ships, and this table to decide what is built
+next. Work explicitly deferred to a future tier, or deferred pending an owner
+decision (stock reservations under TBD-26, supplier scoring, OCR, MFA/SSO,
+multi-currency, in-transit transfers, location-level stock ownership) belongs to
+**no** phase until an owner decision schedules it.
+
+**No phase delivers a feature §24 assigns to a later tier.** In particular,
+Phase 5 does **not** deliver warehouse locations (see §25.0).
+
 | Phase | Title | Ends with |
 |---|---|---|
 | 1 | **Foundation + Architecture + Database + Security Core** | Solution scaffold, all 12 schemas created by migration, the tenant-isolation data-access layer, the security spine (identity primitives, session/scope model, audit, error contract) and passing S1–S12 |
 | 2 | **Identity + Tenants/Houses + Warehouses + RBAC** | All 105 permissions seeded, 11 tenant roles seeded by the D1–D5 derivation, the full authorization chain, login/logout/refresh rotation, lockout and rate limits |
 | 3 | **Products + Units + Inventory Engine** | Master data, `StockBalance`/`InventoryLot`, the immutable ledger, the guarded `UPDATE` path, stock in/out/adjust/waste |
 | 4 | **Devices + Shared Terminal + Purchasing + Suppliers** | Device administration and enrollment, the terminal PIN flow, suppliers, price history, requests, approvals, orders, partial receiving |
-| 5 | **Batches + Expiry + Waste + Transfers + Stocktake + Locations + Barcode/QR** | Batch/expiry tracking, FEFO allocation, near-expiry job, transfers, stocktake, sub-locations, barcode scanning and printing |
+| 5 | **Batches + Expiry + Waste + Transfers + Stocktake + Barcode/QR** | Batch/expiry tracking, FEFO allocation, near-expiry job, instantaneous transfers, stocktake, barcode scanning and printing |
 | 6 | **Events + Recipes + Food Cost + Forecasting** | Events, attendance, requirements, consumption, shortage snapshots and recommendations, recipes, costing snapshots, forecasting |
 | 7 | **Reports + Notifications + SaaS + Search + Customization** | Report and export endpoints, in-app and push notifications, plans/entitlements/usage, global search, custom fields, attachments |
 | 8 | **Frontend PWA + Shared Terminal UI + Full System Testing + Production** | The PWA, the shared-terminal UI, the full S1–S33 suite, concurrency and DB-integrity suites, production hardening |
+
+### 25.0 Warehouse locations are not a Phase 5 capability
+
+Phase 5 previously read *"… + Stocktake + **Locations** + Barcode/QR"*. That
+contradicted the register — TBD-19 was an open owner decision — and has been
+corrected:
+
+> **Descriptive warehouse sub-locations are V1.1 scope under the approved
+> TBD-19 decision (ADR-0045); true location-level inventory is V2/future
+> redesign.**
+
+`WarehouseId` remains the finest stock scope in V1 and V1.1. No phase delivers
+location-scoped stock, and no V1 table acquires a location or bin key. The V1.1
+descriptive sub-location work is additive — an operator-facing label on a
+warehouse that owns no stock — and is scheduled, if at all, with the other V1.1
+items in the phase that shares its module, not as a Phase 5 V1 deliverable.
 
 ### 25.1 Legacy 11-phase mapping
 
@@ -1164,20 +1334,42 @@ a build failure, not a follow-up ticket.
 
 ## 27. Approval and ratification
 
-Phase 1 MUST NOT begin until the product owner has:
+Phase 1 was gated on the product owner doing three things. **All three are done,
+on 2026-09-30:**
 
-1. **Ratified this blueprint v1.0** and the 44 `Proposed` ADRs in
-   `DECISIONS.md`, and
-2. **Answered or explicitly deferred each of the 20 unresolved items** in §23.1,
-   recording each answer as an ADR in `DECISIONS.md`, and
-3. **Acknowledged the 9 registered security limitations** in
+1. ~~**Ratified this blueprint v1.1** and the 44 `Proposed` ADRs in `DECISIONS.md`
+   (ADR-0001 – ADR-0044).~~ **DONE** — the owner ratified the whole of v1.1;
+   ADR-0001 – ADR-0044 were promoted to `Accepted` and ADR-0045 – ADR-0050 were
+   already `Accepted` because they *are* the owner's decisions.
+2. **Acknowledged the 9 registered security limitations** in
    `SECURITY_ARCHITECTURE.md` §15 (SEC-KNW-01 … SEC-KNW-09) as accepted for V1.
+   **DONE** — acknowledged as known V1 limitations on 2026-09-30. They remain
+   registered and unremediated; acknowledging them is not a claim that they were
+   fixed.
+3. **Confirmed that no Phase 1 decision blocker remains** (§23.1) — the check that
+   the five genuine Phase 1 gates were decided on 2026-09-30 (§23.4) and that every
+   remaining §23.1 item is phase-gated to Phase 2 or later, or is explicitly
+   future/deferred scope. **DONE** — zero Phase 1 decision blockers.
 
-Ratification is recorded by promoting the relevant ADRs from `Proposed` to
-`Accepted` and by updating the status line of this document. Until that happens
-the status remains **STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS**.
+There is deliberately **no** precondition that the remaining 16 open items be
+answered or explicitly deferred before Phase 1. They stay `TBD` at the phase
+named in §23.1: answering one is a phase-scoped task, not a ratification
+precondition, and ratifying this blueprint did not decide any of them.
+
+**No missing decision blocks Phase 1.** The five items that genuinely gated the
+Phase 1 foundations were decided on 2026-09-30 (§23.4): locations (TBD-19),
+currency (TBD-21), transfers (TBD-22), legal entities (TBD-24) and the scale
+target (TBD-25). Every remaining §23.1 item is phase-gated to Phase 2 or later, or
+is explicitly future/deferred scope, and none requires a V1 schema change.
+**The ratification step is complete; Phase 1 is authorised and unstarted.**
+
+Ratification was recorded by promoting ADR-0001 – ADR-0044 from `Proposed` to
+`Accepted` and by updating the status line of this document. It did **not**
+create, merge, split, renumber or rewrite any ADR, and it did **not** resolve any
+`TBD`. The status is now
+**STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1**.
 
 | Role | Name | Date | Status |
 |---|---|---|---|
-| Product owner | TBD | TBD | Pending ratification |
-| Technical lead | TBD | TBD | Pending ratification |
+| Product owner | Owner decision recorded 2026-09-30 (TBD-19, 21, 22, 24, 25, 26); **full ratification granted** | 2026-09-30 | **Ratified** — blueprint v1.1 and ADR-0001 – ADR-0050; SEC-KNW-01 – SEC-KNW-09 acknowledged as accepted V1 limitations |
+| Technical lead | TBD | TBD | Sign-off not yet recorded; design gate closed by owner ratification |

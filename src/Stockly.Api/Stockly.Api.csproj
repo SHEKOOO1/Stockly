@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+<!--
+    Microsoft.AspNetCore.Authentication.JwtBearer is deliberately ABSENT.
+
+    Phase 1 implements the session/scope MODEL (ADR-0034) but not authentication:
+    no token is issued, validated or refreshed until Phase 2. Nothing referenced the
+    package, so it was dead weight that still put an authentication assembly into the
+    restore graph of the API and of every test project that references it. A package
+    present but unused is misleading - it reads as "JWT auth is wired up" when no
+    AddAuthentication call exists anywhere. Phase 2 adds it back at the point of use.
+  -->
+  <ItemGroup>
+    <!--
+      Only the in-box Microsoft.AspNetCore.OpenApi document generator. The `Openapi`
+      (SwaggerUI) package was removed: it is unused by Program.cs and drags in
+      RestSharp 103.4.0, which carries advisory GHSA-9pq7-rcxv-47vq (high) plus a
+      net4x-only restore (NU1701). Warnings are errors here, so an unused vulnerable
+      package blocks every build of every test project that references the API.
+    -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.5" />
+    <!--
+      Pinned forward from the 2.0.0 that Microsoft.AspNetCore.OpenApi resolves by
+      default. CVE-2026-49451 / GHSA-v5pm-xwqc-g5wc (high): a circular $ref pair in a
+      parsed OpenAPI document recurses until the stack overflows and the process dies.
+      Fixed in 2.7.5 on the 2.x line. Warnings are errors, so the transitive 2.0.0
+      would otherwise fail every build.
+    -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\Stockly.Application\Stockly.Application.csproj" />
+    <ProjectReference Include="..\Stockly.Infrastructure\Stockly.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

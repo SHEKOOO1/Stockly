@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Document | `SECURITY_ARCHITECTURE.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-09-30 |
 | Known limitations | 9 registered (§15) — none may be removed without a decision, a test, and a status update |
 | Related | `ROLES_PERMISSIONS.md`, `ARCHITECTURE.md`, `BUSINESS_RULES.md`, `TESTING_STRATEGY.md` |
 
@@ -185,6 +185,22 @@ Resource scope (row belongs to tenant AND an authorized warehouse)
 
 Skipping any step is a security defect, not a style issue.
 
+**Two owner decisions simplify this chain, and both simplify it in the safe
+direction** (2026-09-30):
+
+- **The chain has no legal-entity step (TBD-24 / ADR-0048).** One `Tenant` is one
+  legal entity; there is no parent tenant and no entity subdivision. This removes
+  a level that would otherwise have to be authorized, and it means the tenant
+  step cannot be satisfied partially — a request addresses exactly one legal
+  entity, so there is no cross-entity aggregation to police.
+- **The chain ends at the warehouse (TBD-19 / ADR-0045).** `WarehouseId` is the
+  finest stock scope, so there is no location/bin step to bypass. A caller cannot
+  escalate by naming a deeper scope, because no deeper scope exists in the schema
+  and an unknown JSON property is `400` (BR-UNI-05). If location-level stock is
+  ever introduced under V2, **this chain MUST be extended in the same change** —
+  a location must never be a display-only filter on top of an already-authorized
+  warehouse without its own assignment check.
+
 ### 5.2 Rules
 
 - Role ≠ warehouse scope. `stock.out` permission in the kitchen does not grant
@@ -327,6 +343,26 @@ Security-relevant summary:
    transactions and never deletes history.
 8. A stock-out request that would exceed available stock is rejected with a
    business code; the client is never allowed to "force" a negative balance.
+9. **A transfer is one atomic transaction (TBD-22 / ADR-0047).** Source decrement
+   and target increment commit together, so there is no window in which stock is
+   missing from both warehouses. Both warehouses must belong to the **same
+   tenant**: the composite FK on `CounterWarehouseId` is
+   `(TenantId, CounterWarehouseId)`, which makes a cross-tenant transfer
+   unrepresentable in the schema rather than merely rejected in code. Both legs
+   are audited in the same transaction with the same actor, device, session and
+   correlation id, so an instantaneous transfer is fully attributable.
+10. **A transfer requires the permission in both warehouses** — authorization is
+    evaluated twice, once per `MembershipWarehouse`, and a caller assigned to only
+    one side receives `404`, never a partial transfer.
+11. **`WarehouseId` is the finest stock scope (TBD-19 / ADR-0045).** There is no
+    location, zone or bin in the authorization chain, so `MembershipWarehouse` is
+    the last scope check with nothing below it. A caller cannot reach stock they
+    were not assigned by naming a deeper location, because no such field exists
+    and an unknown JSON property is `400`.
+12. **No reservation permission is effective in V1.** `inventory.reservations.manage`
+    is seeded but granted to nobody (ADR-0044 rule D3), and `ReservedQuantity` is
+    always `0` because reservation semantics are unresolved (TBD-26 / ADR-0050).
+    No V1 endpoint may act on a reserved quantity.
 
 ---
 
@@ -444,6 +480,28 @@ without a decision, a test, and a status update.
 | SEC-KNW-07 | No WAF/DDoS service in front of Nginx in V1 | Low | Edge rate limits + provider-level protection | Phase 8 production hardening |
 | SEC-KNW-08 | The terminal identity endpoint discloses the display names of the memberships assigned to a device's warehouse to anyone holding the enrollment code | Medium (reduced from High) | Enumeration is rate limited per IP and per code, the response is restricted to name + avatar, the code is rotatable and dies with the device, and every authentication attempt is audited. It is **not** eliminated: possession of the code still reveals a staffing list | V2: display-name aliases, or requiring a successful PIN before any name is shown |
 | SEC-KNW-09 | `IsPlatformAdmin` is all-or-nothing in V1: a platform operator holds all 11 `platform.*` codes, including `platform.maintenance` | Medium | Platform routes are audited per call with the target tenant; the flag is settable only by a platform-scoped call; the tenant-facing token cannot reach any platform route | V2: split operator roles (RP-TBD-06) |
+
+### Owner acknowledgement — 2026-09-30
+
+The product owner explicitly acknowledged **SEC-KNW-01, SEC-KNW-02, SEC-KNW-03,
+SEC-KNW-04, SEC-KNW-05, SEC-KNW-06, SEC-KNW-07, SEC-KNW-08 and SEC-KNW-09** as
+**known, accepted limitations of V1**, as part of ratifying blueprint v1.1.
+
+This acknowledgement means the nine entries above are consciously accepted for
+V1 with the mitigations listed. It means specifically:
+
+- The limitations **remain registered**. None was removed, reworded,
+  reinterpreted, downgraded or closed.
+- They are **not vulnerabilities that have been fixed**, and this
+  acknowledgement must never be reported as a remediation.
+- Each still carries the plan recorded against it, and those plans are scope,
+  not commitments for V1.
+- The per-phase checklist in §16 is unchanged; nothing here weakens it.
+
+No claim is made that any security test has run. **No test of any kind has been
+executed**: there is no application code, no test project and no test
+infrastructure in the repository yet, and Docker/SQL Server are not available on
+the current workstation.
 
 ---
 

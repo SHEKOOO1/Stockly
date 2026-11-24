@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Document | `ARCHITECTURE.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 (8 delivery phases) |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1 (8 delivery phases; TBD-19, 21, 22, 24, 25 decided 2026-09-30) |
+| Last updated | 2026-09-30 |
 | Related | `PROJECT_BLUEPRINT.md`, `SECURITY_ARCHITECTURE.md`, `DATABASE_DESIGN.md`, `DECISIONS.md` |
 
 ---
@@ -189,6 +189,26 @@ Relying on a single global query filter is considered insufficient. Stockly uses
 
 A security test suite attempts cross-tenant reads/writes for every module and
 must fail if any of the three layers is removed.
+
+**Why the tenant is also the whole organization (TBD-24 / ADR-0048).** One
+`Tenant` is one legal/business entity: there is no parent-tenant hierarchy and no
+legal-entity subdivision. This is a load-bearing architectural decision, not a
+simplification. Because `TenantId` is the *only* organizational key, layer 2 above
+is a single predicate rather than a predicate per organizational level, and layer 3
+needs only `(Id, TenantId)` — a composite key of `(Id, TenantId, LegalEntityId)`
+would have had to be re-derived for every FK in 12 schemas and every unique index
+in 66 entities. An organization needing two legal entities runs two tenants, which
+also means two independent authorization boundaries by construction: there is no
+path by which a membership in entity A can reach entity B, because the two are
+different tenants and a session carries exactly one.
+
+**Why the warehouse is the end of the scope chain (TBD-19 / ADR-0045).**
+`WarehouseId` is the finest stock scope in V1 and V1.1 — no aisle, zone or bin
+exists. So the warehouse assignment check terminates the chain, and the composite
+FK that makes a cross-tenant transfer unrepresentable (ADR-0047) needs only
+`(TenantId, WarehouseId)`. A V2 location redesign must extend the chain with its
+own assignment model; it must not bolt a location filter onto an
+already-authorized warehouse.
 
 ---
 
@@ -405,16 +425,31 @@ Nginx configuration, and the migration gate exist from the first phase, because
 first production incident becomes unreproducible. Phase 8 hardens it
 (performance, alerting, restore drill) rather than introducing it.
 
+**Implementation status (2026-11-23):** a local reference implementation of this
+topology exists in `Dockerfile`, `docker-compose.yml`, `infra/nginx` and
+`.github/workflows/ci.yml`. It is an environment-neutral development/CI
+reference: licence, hosting target, TLS certificate source and rate-limit
+thresholds remain owner decisions and are not encoded. Migrations are a separate
+`migrate` profile, never application startup. Docker is unavailable on this
+workstation, so no image, Compose stack or Nginx route has been validated here.
+
 ---
 
 ## 12. Key architecture decisions
 
-See `DECISIONS.md` (43 records). The decisions most visible in this document are
-ADR-0001 (modular monolith), ADR-0004 (tenant from session), ADR-0006 (devices
-belong to warehouses), ADR-0007 (token model), ADR-0011 (outbox), ADR-0013
-(permissions not in token), ADR-0016 (single DbContext, schema per module),
-ADR-0022 (containerised deployment), ADR-0030 (token storage in the frontend),
-ADR-0032 (`TenantId`-leading unique indexes), ADR-0034 (platform session scope),
-ADR-0035 (terminal enrollment code), ADR-0036 (HMAC throttle identifiers),
-ADR-0038 (typed foreign keys), ADR-0039 (`CHECK` scope), ADR-0040 (eight
-phases), ADR-0041 (filtered variants for nullable unique keys).
+See `DECISIONS.md` (**50 records, all `Accepted`** as of the blueprint
+ratification of 2026-09-30: ADR-0045 – ADR-0050 were `Accepted` as the product
+owner's own decisions, and ADR-0001 – ADR-0044 were promoted from `Proposed` by
+that ratification). The decisions most visible in this document are ADR-0001 (modular
+monolith), ADR-0004 (tenant from session), ADR-0006 (devices belong to
+warehouses), ADR-0007 (token model), ADR-0011 (outbox), ADR-0013 (permissions not
+in token), ADR-0016 (single DbContext, schema per module), ADR-0022 (containerised
+deployment), ADR-0030 (token storage in the frontend), ADR-0032 (`TenantId`-leading
+unique indexes), ADR-0034 (platform session scope), ADR-0035 (terminal enrollment
+code), ADR-0036 (HMAC throttle identifiers), ADR-0038 (typed foreign keys),
+ADR-0039 (`CHECK` scope), ADR-0040 (eight phases), ADR-0041 (filtered variants for
+nullable unique keys), ADR-0044 (seed/grant separation), ADR-0045 (warehouse-level
+stock; locations V1.1 descriptive / V2 stock), ADR-0046 (single currency, no FX),
+ADR-0047 (instantaneous transfers), ADR-0048 (one tenant = one legal entity),
+ADR-0049 (V1 scale target — engineering, not subscription), ADR-0050 (reservations
+deferred to TBD-26).

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="FluentAssertions" Version="8.11.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="NSubstitute" Version="6.2.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The shared SQL Server fixture. One implementation, not four copies. -->
+    <ProjectReference Include="..\Stockly.StocklyDbTestSupport\Stockly.StocklyDbTestSupport.csproj" />
+    <ProjectReference Include="..\..\src\Stockly.Api\Stockly.Api.csproj" />
+    <ProjectReference Include="..\..\src\Stockly.Infrastructure\Stockly.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Stockly.Application\Stockly.Application.csproj" />
+    <ProjectReference Include="..\..\src\Stockly.Domain\Stockly.Domain.csproj" />
+  </ItemGroup>
+
+
+  <ItemGroup>
+    <!--
+      xUnit requires the [CollectionDefinition] to be in the same assembly as its
+      tests (xUnit1041). The fixture IMPLEMENTATION is shared so there is exactly one
+      copy; this file only declares this assembly's collection over that shared fixture.
+    -->
+    <Compile Include="..\Stockly.StocklyDbTestSupport\SqlServerTestCollection.cs" Link="SqlServerTestCollection.cs" />
+  </ItemGroup>
+</Project>

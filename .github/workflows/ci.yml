@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: true
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  static:
+    name: Static verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Stockly.slnx
+
+      - name: Verify format
+        run: dotnet format Stockly.slnx --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build Stockly.slnx --no-restore -warnaserror
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: EF model drift
+        run: dotnet ef migrations has-pending-model-changes --project src/Stockly.Infrastructure --startup-project src/Stockly.Infrastructure
+
+      - name: Secret scan
+        run: dotnet test tests/Stockly.ArchitectureTests/Stockly.ArchitectureTests.csproj --no-build --no-restore --filter FullyQualifiedName~NoCommittedSecretTests
+
+      - name: Unit tests
+        run: dotnet test tests/Stockly.UnitTests/Stockly.UnitTests.csproj --no-build --no-restore
+
+      - name: Architecture tests
+        run: dotnet test tests/Stockly.ArchitectureTests/Stockly.ArchitectureTests.csproj --no-build --no-restore
+
+  database:
+    name: Database-backed verification
+    runs-on: ubuntu-latest
+    needs: static
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2022-latest
+        env:
+          ACCEPT_EULA: ${{ secrets.STOCKLY_ACCEPT_EULA }}
+          MSSQL_PID: ${{ secrets.STOCKLY_MSSQL_PID }}
+          MSSQL_SA_PASSWORD: ${{ secrets.STOCKLY_CI_SA_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Stockly.slnx
+
+      - name: Build
+        run: dotnet build Stockly.slnx --no-restore -warnaserror
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Configure test connection
+        env:
+          STOCKLY_CI_SA_PASSWORD: ${{ secrets.STOCKLY_CI_SA_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CONNECTION="Server=localhost,1433;Database=Stockly;User Id=sa;"
+          CONNECTION="${CONNECTION}Password=${STOCKLY_CI_SA_PASSWORD};Encrypt=true;TrustServerCertificate=true;MultipleActiveResultSets=false"
+          echo "STOCKLY_TEST_SQLSERVER=$CONNECTION" >> "$GITHUB_ENV"
+
+      - name: Apply migrations
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if dotnet ef database update --project src/Stockly.Infrastructure --startup-project src/Stockly.Infrastructure --connection "$STOCKLY_TEST_SQLSERVER"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
+
+      - name: Integration tests
+        run: dotnet test tests/Stockly.IntegrationTests/Stockly.IntegrationTests.csproj --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory coverage
+
+      - name: Security tests
+        run: dotnet test tests/Stockly.SecurityTests/Stockly.SecurityTests.csproj --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory coverage
+
+      - name: Concurrency tests
+        run: dotnet test tests/Stockly.ConcurrencyTests/Stockly.ConcurrencyTests.csproj --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory coverage
+
+      - name: Migration tests
+        run: dotnet test tests/Stockly.MigrationTests/Stockly.MigrationTests.csproj --no-build --no-restore --collect:"XPlat Code Coverage" --results-directory coverage
+
+      - name: Coverage summary
+        run: dotnet reportgenerator -reports:coverage/**/coverage.cobertura.xml -targetdir:coverage/report -reporttypes:TextSummary
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: stockly-coverage
+          path: coverage

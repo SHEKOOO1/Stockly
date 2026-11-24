@@ -3,13 +3,26 @@
 | Field | Value |
 |---|---|
 | Document | `DATABASE_DESIGN.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0; no open schema question blocks Phase 1 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; **no open schema question blocks Phase 1** (TBD-19, 21, 22, 24, 25 decided 2026-09-30) |
+| Last updated | 2026-09-30 |
 | Engine | SQL Server 2022 |
 | ORM | Entity Framework Core |
-| Entities | 66 (V1) — see §4 |
+| Entities | 66 (V1) — unchanged by the 2026-09-30 owner decisions; see §4 |
 | Related | `PROJECT_BLUEPRINT.md`, `BUSINESS_RULES.md`, `ARCHITECTURE.md` |
+
+**Scope invariants fixed by owner decision on 2026-09-30** — each forbids a
+feature rather than adding one, so the 66-entity / 12-schema V1 model is
+unchanged:
+
+| ID | Decision | Schema consequence |
+|---|---|---|
+| TBD-19 / ADR-0045 | No location-level inventory in V1 | **No V1 table carries a location, bin, aisle or rack key.** `WarehouseId` is the finest stock scope. `identity.Warehouse` has no parent key. V1.1 descriptive locations are additive; location-scoped stock is a V2 redesign of `StockBalance`/`InventoryLot` and of the `UX_*` indexes in §7 |
+| TBD-21 / ADR-0046 | One currency per Tenant in V1 | **No FX table, no rate table, no conversion column.** Every `CurrencyCode` is informational |
+| TBD-22 / ADR-0047 | Transfers are instantaneous | **No in-transit entity, no transfer state column.** A transfer is one `StockDocument` + two `StockTransaction` rows in one transaction (§8) |
+| TBD-24 / ADR-0048 | One Tenant = one legal entity | **No `LegalEntity` table, no `ParentTenantId`.** `TenantId` is the single organizational boundary |
+| TBD-25 / ADR-0049 | V1 scale target | Sizes the §7 indexes and the ledger partitioning. **Engineering targets, not subscription limits** — no `PlanFeature` limit derives from them |
+| TBD-26 / ADR-0050 | Reservations unresolved | **`StockReservation` is not a V1 table.** `ReservedQuantity` exists and is always `0` |
 
 ---
 
@@ -40,7 +53,9 @@
    No `float` anywhere. The one documented exception is
    `master.UnitConversion.Factor decimal(18,8)`: a conversion factor is a ratio
    of two quantities, and rounding it to 4 places would accumulate error across
-   chained conversions.
+   chained conversions. **All money is in the tenant's single currency** — there is
+   no FX rate column and no conversion step anywhere in the schema (TBD-21 /
+   ADR-0046), so a decimal is the complete representation, not a placeholder.
 6. **All timestamps are UTC `datetime2(3)`.** Tenant timezone is applied at
    presentation (ADR-0029).
 7. **Concurrency:** every mutable operational table has
@@ -71,6 +86,16 @@ extensibility   Custom field definitions and values
 audit           Audit log (append-only)
 ops             Outbox messages, document sequences
 ```
+
+**Organizational boundaries (decided 2026-09-30).** A `Tenant` is one
+legal/business entity (TBD-24 / ADR-0048), and a `Warehouse` is the finest stock
+scope in V1 and V1.1 (TBD-19 / ADR-0045). Accordingly there is **no**
+legal-entity table, no `ParentTenantId`, no `Warehouse` hierarchy, and no
+location, bin or aisle key anywhere in the V1 schema. Transfers are instantaneous
+between warehouses of the same tenant (TBD-22 / ADR-0047), so there is no
+in-transit table. Stock reservations are not a V1 entity (TBD-26 / ADR-0050), so
+there is no `StockReservation` table and no FX table (TBD-21 / ADR-0046). This
+model reflects those decisions exactly.
 
 Table naming: `schema.SingularEntityName` (e.g. `inventory.StockBalance`).
 FK naming: `FK_<ChildTable>_<ParentTable>`. Index naming:
@@ -212,6 +237,14 @@ Updated in the same transaction as resource creation (ADR: over-provisioning).
 | IsDeleted | bit | NN sd |
 | RowVersion | rowversion | rowv |
 
+**One `Tenant` row is one legal/business entity** (TBD-24 / ADR-0048). There is
+deliberately **no `ParentTenantId`, no `LegalEntityId` and no entity
+subdivision**: an organisation that needs two legal entities runs two tenants.
+`TenantId` therefore remains the single organizational boundary that leads every
+unique index on a tenant-scoped table (§5), which is what makes
+"every unique index leads with `TenantId`" sufficient to enforce
+within-tenant-only uniqueness.
+
 #### identity.TenantSetting
 `Id`, `TenantId` (FK NN **UQ**), `CurrencyCode char(3) NN`, `NumberOfDecimalPlaces int NN`
 (0–4), `DefaultWarehouseId` (FK NULL), `LowStockPolicy` (nvarchar(30) NN),
@@ -223,6 +256,14 @@ Updated in the same transaction as resource creation (ADR: over-provisioning).
 
 > `AllowNegativeStock` exists solely so a platform operator can prove it is never
 > enabled. A test asserts it is `0` in all environments.
+
+> **`CurrencyCode` is the tenant's single currency, and the only one.** The
+> uniqueness of the setting is already enforced by `UNIQUE (TenantId)` — one
+> settings row per tenant, so one currency per tenant by construction (TBD-21 /
+> ADR-0046). `char(3)` is the ISO-4217 code and is **not** validated against a
+> live FX source, because there is no FX source in V1: there is **no rate table
+> and no conversion path anywhere in the schema**. Every monetary column in the
+> database is interpreted in this code.
 
 #### identity.TenantMembership
 | Column | Type | Notes |
@@ -318,6 +359,21 @@ UQ: `(MembershipRoleId, WarehouseId)`.
 | RowVersion | rowversion | rowv |
 
 UQ (filtered): `(TenantId, Code) WHERE IsDeleted = 0`.
+
+**A `Warehouse` is the V1 and V1.1 stock scope and has no parent key.** There is
+deliberately **no `ParentWarehouseId`, no `LocationId` and no site/zone/bin
+column**: sub-locations were decided out of V1 (TBD-19 / ADR-0045). The
+`Warehouse` row is a single flat level inside the tenant, which is what lets
+`MembershipWarehouse` remain the one and only warehouse authorization filter
+(`ROLES_PERMISSIONS.md` §3) with no hierarchy to walk.
+
+**No virtual or in-transit warehouse exists.** Every `Warehouse` row is a real
+physical site. Transfers are instantaneous (TBD-22 / ADR-0047), so V1 never needs
+a non-physical warehouse to hold stock in transit — which would otherwise be a
+location covered by no `MembershipWarehouse`. A V1.1 *descriptive* sub-location
+is a display attribute added to this table and **owns no stock**: `StockBalance`
+and `InventoryLot` keys do not change. **Location-level stock ownership is a V2
+redesign** and would require re-keying both tables and their `UX_*` indexes (§7).
 
 #### identity.MembershipWarehouse — the "WHERE" axis
 | Column | Type | Notes |
@@ -711,6 +767,18 @@ CHECK: `ExpiryDate IS NULL OR (ProductionDate IS NULL OR ExpiryDate >= Productio
   `RecipeCostSnapshot`, `EventFoodCostSnapshot`), where a dangling reference is
   harmless because a row is never rewritten.
 - Status transitions are enforced in the domain, not by a trigger.
+- **`CounterWarehouseId` is the whole transfer model (TBD-22 / ADR-0047).** A
+  transfer is one `StockDocument` with `MovementType = 4`, whose two
+  `StockTransaction` legs (one negative at `WarehouseId`, one positive at
+  `CounterWarehouseId`) are written in **one database transaction** (§8). There is
+  deliberately **no in-transit entity, no in-transit warehouse, no
+  `TransferState` column and no transfer state machine** — stock is never
+  unaccounted for, so there is no intermediate state to persist. The composite FK
+  on `CounterWarehouseId` is `(TenantId, CounterWarehouseId)`, which makes a
+  **cross-tenant transfer unrepresentable at the database level**. The pairing
+  invariant is `CounterWarehouseId IS NOT NULL ⇔ MovementType = 4`. Audit is
+  unaffected: both legs carry `PostedByMembershipId`, `DeviceId`, `SessionId` and
+  `CorrelationId`, so a transfer is as auditable as any other movement.
 
 #### inventory.StockDocumentLine
 | Column | Type | Notes |
@@ -1264,6 +1332,17 @@ test suite attempts escalation through every path.
 Pagination is **keyset-based** (seek to the last seen `Id`/`OccurredAtUtc`),
 never `OFFSET` on large tables, so deep pages stay fast.
 
+**These indexes are sized against the confirmed V1 engineering target (TBD-25 /
+ADR-0049): ~50 warehouses, ~100 k products, ~10 M inventory ledger rows and
+~200 concurrent users per tenant.** That target is what justifies the composite
+`UX_*` keys, the `INCLUDE` lists and the FEFO index column order above, and it is
+what `TESTING_STRATEGY.md` generates data for. It is a **design and capacity
+target, not a subscription limit**: no `PlanFeature` row, quota or limit in this
+schema is derived from it, and raising it requires new measurements, not a
+schema change. Because every unique index leads with `TenantId` (§5) and
+`WarehouseId` is the finest stock scope (ADR-0045), these keys stay correct at any
+volume — the target sets *how far they are tested*, not *what they mean*.
+
 ---
 
 ## 8. Transaction patterns
@@ -1306,6 +1385,33 @@ document locked in a **consistent order** (`LineNumber`, then `ProductId`, then
 `WarehouseId`) to prevent deadlocks; deadlock victims are retried by the
 middleware (max 3 attempts with jitter) because the operation is idempotent.
 
+**A transfer is one transaction, not two (TBD-22 / ADR-0047).** Because there is
+no in-transit state, the source decrement and the destination increment cannot be
+separated in time. Both guarded `UPDATE`s and both `StockTransaction` inserts
+commit or roll back together:
+
+```text
+BEGIN TRAN;  SET XACT_ABORT ON;
+  -- source leg (decrement)
+  UPDATE inventory.StockBalance SET OnHandQuantity = OnHandQuantity - @qty, ...
+   WHERE Id=@src AND TenantId=@tid AND WarehouseId=@srcWid AND OnHandQuantity >= @qty;
+  IF @@ROWCOUNT = 0 THROW 50002, 'insufficient_stock', 1;
+  INSERT inventory.StockTransaction (... WarehouseId=@srcWid, Quantity=-@qty, BalanceAfter=@after);
+  -- destination leg (increment) — same TenantId, different WarehouseId
+  UPDATE inventory.StockBalance SET OnHandQuantity = OnHandQuantity + @qty, ...
+   WHERE Id=@dst AND TenantId=@tid AND WarehouseId=@dstWid;
+  IF @@ROWCOUNT = 0 THROW 50002, 'destination_warehouse_not_found', 1;
+  INSERT inventory.StockTransaction (... WarehouseId=@dstWid, Quantity=+@qty, BalanceAfter=@after);
+  -- both audit rows, same transaction
+COMMIT;
+```
+
+There is no commit point at which the quantity exists in neither warehouse, and
+none at which it is double-counted. A transfer therefore has **no partially
+posted state to reconcile** and needs no repair job. Lock ordering places the two
+warehouses in a fixed order (lower `WarehouseId` first) so concurrent transfers
+in opposite directions cannot deadlock each other.
+
 ### 8.2 Idempotent posting
 
 ```text
@@ -1333,7 +1439,7 @@ SELECT NextValue FROM ops.DocumentSequence WHERE ...;
 | Data | Retention | Mechanism |
 |---|---|---|
 | Stock transactions | Permanent (business record) | Append-only |
-| Audit log | §23 TBD-14 (provisional 24 months online) | Monthly partitions, archive to cold storage |
+| Audit log | §23 TBD-14 — **UNRESOLVED (Phase 8 gate)**, no retention value chosen; design assumes 24 months online | Monthly partitions, archive to cold storage |
 | Login attempts | 6 months (proposed) | Monthly partitions, automated purge job |
 | Sessions | 13 months (proposed, for investigation) | Purge job for `Expired`/`Revoked` |
 | Refresh tokens | 30 days after expiry (proposed) | Purge job |
@@ -1388,16 +1494,20 @@ none of them is a silent open question.
 | ID | Question | Resolved by | Disposition |
 |---|---|---|---|
 | DB-TBD-01 | Fractional quantities in V1, and which base units? | TBD-16 | **Assumption (safe superset):** `decimal(18,4)` everywhere, `Unit.DecimalPlaces` 0–4. V1 schema already supports it |
-| DB-TBD-02 | Warehouse sub-locations in V1 or V1.1? | TBD-19 | **Owner decision:** V1 has none; additive in V1.1 |
-| DB-TBD-03 | Stock reservation model for event planning | TBD-10 / V2 | **Deferred to V2.** `ReservedQuantity` exists and is always 0; the shortage formula already accounts for it |
-| DB-TBD-04 | Multi-currency and FX rate storage | TBD-21 | **Owner decision:** single currency per tenant. No FX table in V1 |
-| DB-TBD-05 | In-transit virtual warehouse for transfers | TBD-22 | **Owner decision:** V1 transfer is instantaneous (one transaction, both warehouses) |
-| DB-TBD-06 | Audit retention and archive destination | TBD-14 | **Owner decision:** provisional 24 months online, then cold archive |
+| DB-TBD-02 | Warehouse sub-locations in V1 or V1.1? | TBD-19 | ✅ **DECIDED 2026-09-30 (ADR-0045):** V1 has **no** sub-locations and no location key anywhere; V1 stock is warehouse-level. V1.1 **descriptive** locations only, no stock ownership. Location-level stock is a **V2 redesign** of `StockBalance`/`InventoryLot` keys and the §7 indexes. No V1 schema change |
+| DB-TBD-03 | Stock reservation model for event planning | **TBD-26** (was TBD-10) | **Deferred, UNRESOLVED (ADR-0050).** V2 candidate pending owner decision. No `StockReservation` table in V1. `ReservedQuantity` exists on `StockBalance` and `InventoryLot` and is always `0`; the shortage formula already accounts for it. Hard vs soft is **undecided** and MUST NOT be assumed |
+| DB-TBD-04 | Multi-currency and FX rate storage | TBD-21 | ✅ **DECIDED 2026-09-30 (ADR-0046):** single currency per tenant. **No FX/rate table in V1**, no conversion column, no conversion logic. `CurrencyCode` columns are informational. No schema change |
+| DB-TBD-05 | In-transit virtual warehouse for transfers | TBD-22 | ✅ **DECIDED 2026-09-30 (ADR-0047):** V1 transfer is instantaneous — one transaction, source decrement + destination increment, same tenant. **No in-transit entity, no transfer state column, no virtual warehouse.** No schema change |
+| DB-TBD-06 | Audit retention and archive destination | TBD-14 | **UNRESOLVED — Phase 8 gate.** TBD-14 is still an open owner decision; no retention value has been chosen. The schema is already retention-ready (partitionable `AuditLog`, `ArchivedAtUtc` marker, archive destination is infrastructure, not schema) so either answer needs no migration |
 | DB-TBD-07 | Barcode symbology set | TBD-18 | **Design decision (ADR-0043):** the six values the enum models |
 | DB-TBD-08 | Full-text search engine choice | TBD-17 | **Design decision (ADR-0042):** SQL Server full text + trigram fallback |
-| DB-TBD-09 | Over-receipt tolerance representation | TBD-08 | **Owner decision:** V1 default 0 %, `PurchaseOrder.AllowOverReceipt` + a per-tenant percentage. No schema change needed either way |
-| DB-TBD-10 | Approval threshold persistence | TBD-09 | **Owner decision:** per-tenant configuration, not code. A dedicated config table is additive |
+| DB-TBD-09 | Over-receipt tolerance representation | TBD-08 | **UNRESOLVED — Phase 4 gate.** TBD-08 is still an open owner decision; no tolerance has been chosen. The representation is settled either way (`PurchaseOrder.AllowOverReceipt` bit + a per-tenant percentage setting), so no schema change is needed regardless of the answer |
+| DB-TBD-10 | Legal-entity structure inside a tenant | TBD-24 | ✅ **DECIDED 2026-09-30 (ADR-0048):** one `Tenant` = one legal entity. **No `LegalEntity` table, no `ParentTenantId`, no entity subdivision.** Multi-entity is a future non-goal. No schema change |
+| DB-TBD-11 | Index and partitioning sizing target | TBD-25 | ✅ **DECIDED 2026-09-30 (ADR-0049):** sized for ~50 warehouses, ~100 k products, ~10 M ledger rows, ~200 concurrent users per tenant. Applied to the §7 `UX_*` indexes and §8 ledger batching. **Engineering targets, not subscription limits** — no `PlanFeature` limit derives from them |
+| DB-TBD-12 | Recipe/plan rounding and consumption basis | TBD-10 | **UNRESOLVED — Phase 6 gate.** TBD-10 now covers **only** recipe serving/yield semantics, the consumption-planning basis, and the related product pack-size rounding. Representable without a migration either way: `Recipe.ServingsPerYield` and the conversion/rounding columns on the `food` tables already exist |
 
-**No `DB-TBD` item changes the 66-entity V1 schema.** Every deferred option is
-additive (a new nullable column, a new table, a new config row), so a late owner
-answer never requires rewriting the V1 design.
+**No `DB-TBD` item changes the 66-entity V1 schema.** The 2026-09-30 owner
+decisions (DB-TBD-02, 04, 05, 10, 11) each **forbid** a schema feature rather than
+add one. Every still-unresolved option is additive (a new nullable column, a new
+table, a new config row), so a late owner answer never requires rewriting the V1
+design.

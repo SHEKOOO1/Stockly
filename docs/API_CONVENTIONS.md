@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Document | `API_CONVENTIONS.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-09-30 |
 | Related | `WORKFLOWS.md`, `SECURITY_ARCHITECTURE.md`, `ROLES_PERMISSIONS.md` |
 
 ---
@@ -295,6 +295,13 @@ GET /api/v1/inventory/balances?pageSize=50&cursor=eyJpZCI6Ii4uIn0
 Keyset (cursor) pagination, not `OFFSET`. `pageSize` 1–200, default 50.
 `estimatedTotal` is explicitly an estimate, never a blocking `COUNT(*)`.
 
+**`pageSize` 1–200 is itself sized against the confirmed V1 engineering target**
+(TBD-25 / ADR-0049: ~50 warehouses, ~100 k products, ~10 M ledger rows per tenant,
+~200 concurrent users): at ~10 M ledger rows a 200-row page is the largest that
+stays a cheap seek operation, and it is the page size at which the concurrency and
+performance suites are run. It is an **engineering limit, not a subscription
+limit** — it is a server-side cap, and no plan tier changes it.
+
 ### 5.3 Filtering and sorting
 
 ```text
@@ -445,7 +452,12 @@ If-Match: "AQAAAAIAAY="
 - Response: master-data objects expose `name` and `nameAr`; the frontend picks.
   The server does not translate fields silently.
 - Enums are returned as stable lowercase codes: `"stock_out"`, `"pending_approval"`.
-- Numbers are raw decimals + ISO currency code; formatting is client-side.
+- Numbers are raw decimals + ISO currency code; formatting is client-side. The
+  currency code is the tenant's single configured currency and is **informational
+  only** — no endpoint converts, re-denominates or compares amounts in two
+  currencies, and no request may supply a currency code that changes how a value is
+  interpreted (TBD-21 / ADR-0046). A request carrying a contradicting
+  `currencyCode` is `400`.
 - Dates are UTC ISO-8601 (`2026-09-27T10:15:30Z`).
 
 ---

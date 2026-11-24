@@ -3,15 +3,21 @@
 | Field | Value |
 |---|---|
 | Document | `BUSINESS_RULES.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-09-30 |
 | Rules | **147**, verified by row count: BR-UNI 13, BR-SEC 20, BR-PIN 10, BR-ORG 7, BR-INV 29, BR-PUR 14, BR-EVT 12, BR-FOD 12, BR-SUB 8, BR-RPT 9, BR-NTF 5, BR-AUD 8 |
 | Error codes | **27** documented (26 emitted + 1 reserved) — §14 |
 | Related | `PROJECT_BLUEPRINT.md`, `DATABASE_DESIGN.md`, `WORKFLOWS.md` |
 
 Rule identifiers (`BR-INV-01`, `BR-SEC-03`, …) are referenced from code, tests
 and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
+
+**The 2026-09-30 owner decisions added no new rule ID.** Each one was folded into
+an existing rule so the count stays at 147: the single-legal-entity invariant
+into `BR-UNI-02`, the single-currency invariant into `BR-UNI-09`, the
+warehouse-level stock scope into `BR-ORG-07`, the export sizing target into
+`BR-RPT-06`, and the instantaneous-transfer rule into `BR-INV-*` / `BR-TBD-13`.
 
 ---
 
@@ -20,14 +26,14 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | ID | Rule |
 |---|---|
 | BR-UNI-01 | Every business operation requires an authenticated session in an **Active** membership. |
-| BR-UNI-02 | The tenant of a request is derived from the authenticated session. Any tenant identifier supplied by the client is ignored; a mismatch is `400`. |
+| BR-UNI-02 | The tenant of a request is derived from the authenticated session. Any tenant identifier supplied by the client is ignored; a mismatch is `400`. **One `Tenant` is one legal/business entity** (TBD-24 / ADR-0048): no parent-tenant hierarchy and no legal-entity subdivision exist, so `TenantId` is the single organizational boundary and no request may address more than one. |
 | BR-UNI-03 | Warehouse-scoped operations require the warehouse to be in the caller's `MembershipWarehouse` set. Otherwise `404`. |
 | BR-UNI-04 | A resource is loaded with a composite predicate (`Id` + `TenantId` [+ `WarehouseId`]) in the same query that reads it. Load-then-check is forbidden. |
 | BR-UNI-05 | Unknown JSON properties are rejected (`400`). Server-owned fields in bodies are ignored. |
 | BR-UNI-06 | All timestamps are stored UTC. `OccurredAtUtc` must not be more than 5 minutes in the future (clock-skew tolerance). |
 | BR-UNI-07 | Deleting a record that appears in history is forbidden. Soft delete instead. |
 | BR-UNI-08 | Every state change of a business document writes an audit record in the same transaction. |
-| BR-UNI-09 | All monetary and quantity values use `decimal(18,4)`; at most 4 decimal places; no scientific notation. |
+| BR-UNI-09 | All monetary and quantity values use `decimal(18,4)`; at most 4 decimal places; no scientific notation. **All monetary values are in the tenant's single configured currency** — the system performs no currency conversion, and no `CurrencyCode` field anywhere may imply one (TBD-21 / ADR-0046). |
 | BR-UNI-10 | Names are trimmed, 1–200 characters, and must not contain control characters. |
 | BR-UNI-11 | Codes are uppercase-normalised, 1–50 characters, unique per tenant among non-deleted rows. |
 | BR-UNI-12 | Any operation that can be retried safely accepts an `Idempotency-Key`; a repeat returns the original result. |
@@ -89,7 +95,7 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | BR-ORG-04 | A membership's warehouse assignment is required before any warehouse-scoped operation. |
 | BR-ORG-05 | A warehouse with posted stock documents cannot be hard-deleted; it is deactivated. |
 | BR-ORG-06 | Deactivating a warehouse prevents new operations there; historical data remains readable. |
-| BR-ORG-07 | Warehouse sub-locations (aisles/bins) are out of V1 scope (TBD-19). |
+| BR-ORG-07 | **`WarehouseId` is the finest stock scope in V1 and V1.1** (TBD-19 / ADR-0045). No aisle, bin, rack, zone or location key may appear on any stock, lot, balance or movement record. Descriptive sub-locations are V1.1 scope and own no stock; location-level stock ownership is a V2 redesign and is not reachable by configuration. |
 
 ---
 
@@ -102,14 +108,14 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | BR-INV-01 | **There is no API to set a stock quantity.** All changes originate from documents that produce ledger transactions. |
 | BR-INV-02 | Every posted line produces exactly one `StockTransaction` with a mandatory `BalanceAfter`. |
 | BR-INV-03 | Balance mutation uses a single atomic guarded `UPDATE` inside an explicit transaction. |
-| BR-INV-04 | `OnHandQuantity` and `ReservedQuantity` can never be negative. Enforced by the guarded `UPDATE` **and** a `CHECK` constraint. |
+| BR-INV-04 | `OnHandQuantity` and `ReservedQuantity` can never be negative. Enforced by the guarded `UPDATE` **and** a `CHECK` constraint. **`ReservedQuantity` is always `0` in V1**: stock reservations are unresolved future scope under TBD-26 (ADR-0050), so no V1 flow may create, change or rely on a non-zero reserved quantity, and hard-vs-soft reservation semantics MUST NOT be assumed. |
 | BR-INV-05 | Document posting is all-or-nothing. A failure on any line rolls back the whole document. |
 | BR-INV-06 | A document can be posted only from `Draft`. Double posting is rejected by the guarded status `UPDATE`. |
 | BR-INV-07 | A posted document is immutable. Corrections are made by **reversal** (compensating transactions) or by a new adjustment document. |
 | BR-INV-08 | A reversal creates a new document and transactions; it never deletes or edits the original. |
 | BR-INV-09 | `ADJUSTMENT` and `WASTE` require a `ReasonCode`. `WASTE` requires a waste reason code specifically. |
-| BR-INV-10 | A `TRANSFER` is atomic across both warehouses: source decrement and target increment in one transaction. Both sides carry the same transfer reference. |
-| BR-INV-11 | A transfer is rejected if the source and target warehouses are the same, or if the membership lacks the permission in **both**. |
+| BR-INV-10 | A `TRANSFER` is **instantaneous** (TBD-22 / ADR-0047): source decrement and target increment commit in **one** database transaction, so no in-transit state, virtual warehouse or transfer state machine exists. Both sides carry the same transfer reference, and both legs are fully audited with the same `PostedByMembershipId`, `DeviceId`, `SessionId` and `CorrelationId`. |
+| BR-INV-11 | A transfer is rejected if the source and target warehouses are the same, if the membership lacks the permission in **both**, or if the two warehouses belong to different tenants — a cross-tenant transfer is unrepresentable in the schema and is rejected in any case. |
 | BR-INV-12 | Multi-line documents lock rows in a consistent order (`LineNumber`, then `ProductId`, then `WarehouseId`) to prevent deadlocks. |
 | BR-INV-13 | `StockBalance` and `InventoryLot` are rebuildable projections. A tested rebuild command recomputes them from the ledger. |
 | BR-INV-14 | Ledger rows are never deleted by the application. |
@@ -171,7 +177,7 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | BR-EVT-03 | An event with posted stock documents cannot be deleted; it is cancelled. |
 | BR-EVT-04 | Requirements are derived from attendance × duration × meal types × per-person factors, or entered directly as totals. The basis is recorded per requirement. |
 | BR-EVT-05 | `ShortageQuantity = max(0, Required − (OnHand + Incoming))`. |
-| BR-EVT-06 | `RecommendedPurchaseQuantity = ceil(ShortageQuantity / packSize)` when a pack size exists, else `ShortageQuantity`. *(pack size field TBD-10)* |
+| BR-EVT-06 | `RecommendedPurchaseQuantity = ceil(ShortageQuantity / packSize)` when a pack size exists, else `ShortageQuantity`. *(pack-size rounding behaviour: TBD-10, Phase 6 gate — this is the pack-size half of TBD-10 only; it has nothing to do with stock reservations, which are TBD-26)* |
 | BR-EVT-07 | A shortage snapshot is immutable; recalculation creates a new snapshot. |
 | BR-EVT-08 | Consumption is recorded through a real `STOCK_OUT` document carrying `EventId`. Free-text consumption claims are not permitted. |
 | BR-EVT-09 | `ConsumedQuantity` cannot exceed `PlannedQuantity × 2` without an explicit override permission and a note. |
@@ -224,7 +230,7 @@ and audit actions. A rule is only removed or changed via a `DECISIONS.md` entry.
 | BR-RPT-03 | Cost figures require `master.products.cost.read` (or the relevant report permission). Without it, quantities are shown without values. |
 | BR-RPT-04 | Large exports run as background jobs and are delivered as attachments through an authorized download endpoint. |
 | BR-RPT-05 | Exports are audited with row counts and filters. |
-| BR-RPT-06 | Exports are limited to a maximum row count (TBD-25) and a maximum time window. |
+| BR-RPT-06 | Exports are limited to a maximum row count and a maximum time window. The limit MUST be sized against the confirmed V1 engineering target (TBD-25 / ADR-0049: ~50 warehouses, ~100 k products, ~10 M ledger rows per tenant) and MUST reject a request that would exceed it rather than truncating silently. This target is **not** a subscription or commercial limit. |
 | BR-RPT-07 | CSV export is UTF-8 with a BOM and `;` delimiter for Arabic Excel compatibility (proposed — confirm with the owner). |
 | BR-RPT-08 | Date filters are interpreted in the tenant's timezone and converted to UTC at the query boundary. |
 | BR-RPT-09 | Report queries use a read-only database path and never take locks that could block operations. |
@@ -330,17 +336,21 @@ this document is silently unresolved. The **rule** is stated here; only the
 
 | ID | Question | Resolved by | Disposition in V1 |
 |---|---|---|---|
-| BR-TBD-01 | Password policy specifics | TBD-01 | Owner decision; provisional ≥ 12 chars, no composition rules. The **rule** (a policy service MUST exist) is fixed |
-| BR-TBD-02 | Return-to-supplier flow | TBD-06 | V1 = return to stock only; return-to-supplier is V1.1 |
-| BR-TBD-03 | Expired stock handling policy | TBD-07 | V1 = expired lots cannot be issued; an admin may quarantine/receive with a reason code |
-| BR-TBD-04 | Over-receipt tolerance model | TBD-08 | V1 default 0 %; over-receipt only with `AllowOverReceipt` + per-tenant percentage. Enforced by a guarded `UPDATE`, **not** a `CHECK` (ADR-0039) |
-| BR-TBD-05 | Approval workflow model and thresholds | TBD-09 | One approval step by permission + optional per-tenant amount bands |
-| BR-TBD-06 | Recipe servings semantics and consumption planning basis | TBD-10 | `ServingsPerYield` nullable; cost per serving `null` until set. Attendance = days + meals/day |
-| BR-TBD-07 | Subscription grace period behaviour | TBD-12 | Provisional 7 days, then read-only; stored per subscription |
-| BR-TBD-08 | Audit retention | TBD-14 | Provisional 24 months online, then cold archive |
-| BR-TBD-09 | Report export localisation | TBD-15 | CSV language-neutral (UTF-8 BOM, `;`, code enums); PDF/Excel Arabic-first in V1.1 |
+| BR-TBD-01 | Password policy specifics | TBD-01 | **UNRESOLVED — Phase 2 gate.** No owner value chosen. A provisional ≥ 12 chars, no composition rules is a placeholder the policy service must read from configuration, not a decision. The **rule** (a policy service MUST exist) is fixed |
+| BR-TBD-02 | Return-to-supplier flow | TBD-06 | **UNRESOLVED — Phase 3 gate.** No owner value chosen. "Return to stock only" is the provisional V1 assumption; return-to-supplier is not designed. The guarded `RETURN` path is fixed either way |
+| BR-TBD-03 | Expired stock handling policy | TBD-07 | **UNRESOLVED — Phase 5 gate.** No owner value chosen. Blocked issue + administrator quarantine is the provisional V1 assumption (BR-INV-23, BR-INV-27) |
+| BR-TBD-04 | Over-receipt tolerance model | TBD-08 | **UNRESOLVED — Phase 4 gate.** No owner tolerance chosen; the 0 % default is provisional. The **representation** is fixed either way: over-receipt only with `AllowOverReceipt` + a per-tenant percentage, enforced by a guarded `UPDATE`, **not** a `CHECK` (ADR-0039) |
+| BR-TBD-05 | Approval workflow model and thresholds | TBD-09 | **UNRESOLVED — Phase 4 gate.** No owner model chosen. One approval step by permission + optional per-tenant amount bands is the provisional V1 assumption; the rule that approval is a **permission**, not a role, is fixed |
+| BR-TBD-06 | Recipe servings semantics, consumption planning basis, and pack-size rounding | TBD-10 | **UNRESOLVED — Phase 6 gate.** `ServingsPerYield` nullable; cost per serving `null` until set. Attendance = days + meals/day. **TBD-10 no longer covers stock reservations — that is TBD-26** |
+| BR-TBD-07 | Subscription grace period behaviour | TBD-12 | **UNRESOLVED — Phase 7 gate.** 7 days then read-only is provisional, stored per subscription |
+| BR-TBD-08 | Audit retention | TBD-14 | **UNRESOLVED — Phase 8 gate.** 24 months online then cold archive is provisional |
+| BR-TBD-09 | Report export localisation | TBD-15 | **UNRESOLVED — Phase 7 gate.** CSV language-neutral (UTF-8 BOM, `;`, code enums) is fixed; PDF/Excel Arabic-first in V1.1 is provisional |
 | BR-TBD-10 | Fractional quantities and base units | TBD-16 | Safe assumption: supported from V1, `decimal(18,4)`, 0–4 decimal places |
 | BR-TBD-11 | Barcode symbologies | TBD-18 | Design decision (ADR-0043): the six modelled values |
-| BR-TBD-12 | Warehouse sub-locations | TBD-19 | V1 has none; additive in V1.1 |
-| BR-TBD-13 | Transfer in-transit model | TBD-22 | V1 = instantaneous transfer; no virtual warehouse |
+| BR-TBD-12 | Warehouse sub-locations | TBD-19 | ✅ **DECIDED 2026-09-30 (ADR-0045):** V1 has none, and `WarehouseId` is the finest stock scope (BR-ORG-07). V1.1 **descriptive** sub-locations only, owning no stock. Location-level stock is a **V2 redesign** |
+| BR-TBD-13 | Transfer in-transit model | TBD-22 | ✅ **DECIDED 2026-09-30 (ADR-0047):** V1 transfer is **instantaneous** — one atomic transaction, no virtual/in-transit warehouse, no transfer state machine, fully audited (BR-INV-10, BR-INV-11) |
 | BR-TBD-14 | CSV delimiter/encoding for Arabic Excel | TBD-15 | **Resolved by BR-RPT-07:** UTF-8 with BOM, `;` delimiter, `.` decimal separator, ISO dates. Listed here only for traceability — it is not open |
+| BR-TBD-15 | Currency model and FX storage | TBD-21 | ✅ **DECIDED 2026-09-30 (ADR-0046):** one currency per Tenant. **No FX, no rate, no conversion** anywhere in the rules; `CurrencyCode` fields are informational (BR-UNI-09) |
+| BR-TBD-16 | Legal/business entity structure inside a tenant | TBD-24 | ✅ **DECIDED 2026-09-30 (ADR-0048):** one Tenant is one legal entity. No parent-tenant hierarchy, no legal-entity subdivision, no multi-tenant operation (BR-UNI-02) |
+| BR-TBD-17 | Report/export and index sizing target | TBD-25 | ✅ **DECIDED 2026-09-30 (ADR-0049):** ~50 warehouses, ~100 k products, ~10 M ledger rows, ~200 concurrent users per tenant. **Engineering targets, not subscription limits** (BR-RPT-06) |
+| BR-TBD-18 | Stock reservation semantics for event planning | **TBD-26** (was TBD-10) | **UNRESOLVED — deferred, no phase scheduled.** V2 candidate pending owner decision (ADR-0050). `ReservedQuantity` is always `0` in V1 (BR-INV-04); hard vs soft, release timing and lifecycle are **undecided** |

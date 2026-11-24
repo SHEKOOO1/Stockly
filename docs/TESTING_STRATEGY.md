@@ -3,9 +3,9 @@
 | Field | Value |
 |---|---|
 | Document | `TESTING_STRATEGY.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-11-23 |
 | Related | `SECURITY_ARCHITECTURE.md`, `DEVELOPMENT_STATUS.md` |
 
 ---
@@ -25,6 +25,40 @@
    mutable fixture. Each test creates and destroys its own tenant.
 5. **Honesty.** If a test class could not run in the current environment, it is
    reported as **not run** — never as passing.
+6. **One canonical database.** There is exactly one Stockly database, named
+   `Stockly`, created **only** by applying EF Core migrations (**ADR-0052**).
+   Every DB-backed tier targets it; isolation between tests comes from
+   **separate tenants and their own teardown**, never from separate databases.
+   A suite MUST NOT create, drop, rebuild or re-migrate a database — with the one
+   documented exception of a migration test, which may create a uniquely-named
+   temporary database and MUST drop it in a `finally` block. Rationale: a set of
+   per-suite copies had drifted so far that the stale copies carried **no RLS
+   policies and no TenantScope `CHECK`s**, so isolation tests running against them
+   were asserting against a database that enforced nothing.
+
+### 1.1 How the canonical database is targeted
+
+The database is **never hardcoded**. Tests read the
+`STOCKLY_TEST_SQLSERVER` environment variable and **fail loudly when it is
+unset** — the fixture MUST NOT fall back to a default, to `localdb`, or to a
+freshly-created database:
+
+```powershell
+$env:STOCKLY_TEST_SQLSERVER="Server=localhost\SQLEXPRESS;Integrated Security=true;TrustServerCertificate=true"
+dotnet test Stockly.slnx
+```
+
+The target database MUST be at **head migration** before the tiers run.
+Schema conformance is asserted, not assumed — `tools/Stockly.VerifyDatabase.sql`
+checks the catalogue invariants (13 schemas, 66 domain tables, 185 FKs, 156
+`CHECK`s, 60 TenantScope `CHECK`s, 60 RLS filter predicates, 0 untrusted or
+disabled constraints). Any deviation fails the build.
+
+Because RLS **and** EF query filters are both active, an unscoped principal
+legitimately reads **zero** rows from tenant-owned tables. A test that needs a
+global view MUST set the scope (`sp_set_session_context`) or call
+`IgnoreQueryFilters()` **deliberately and explicitly** — never as a way to evade
+an isolation assertion.
 
 ---
 
@@ -88,6 +122,30 @@
   (a reflection test over all response DTOs).
 - Every `Post`/`Patch` controller action is annotated with a required-permission
   metadata attribute or is explicitly listed as anonymous.
+- **Absence tests for the 2026-09-30 decisions.** These are the highest-value
+  tests in this section, because each decision is a *prohibition* and a prohibition
+  cannot be verified by reading a list of what exists. Each is a schema/migration
+  assertion, not a code review:
+  - **No location scope (ADR-0045):** no `StockBalance`, `InventoryLot`,
+    `StockTransaction`, `StockDocument` or `StockDocumentLine` type has a
+    location, bin, aisle, rack or zone property, and no such column exists in the
+    generated migration. `identity.Warehouse` has no parent/navigation to another
+    warehouse.
+  - **No FX (ADR-0046):** no entity has an exchange-rate, rate-date or
+    converted-amount property, and no table other than `identity.TenantSetting`
+    participates in currency handling.
+  - **No in-transit transfer state (ADR-0047):** no entity has an in-transit
+    status, transfer state or receiving state property; `Warehouse.Type` has no
+    in-transit value; there is no transfer-receipt or transfer-shipment entity.
+  - **No legal-entity layer (ADR-0048):** no `LegalEntity`-like entity exists and
+    no entity references a tenant other than through its own `TenantId`.
+  - **No V1 reservations (ADR-0050):** no `StockReservation` entity or table
+    exists; `ReservedQuantity` is `0` for every seeded row; and the
+    `inventory.reservations.manage` permission is seeded but granted to **zero**
+    roles.
+  - Each of these tests is written in the phase that first introduces the
+    affected table, and re-run on every migration. A failure is a **build
+    failure**, not a warning — it means a prohibited V1 feature has been built.
 
 ### 3.3 Integration tests (real DB)
 
@@ -127,9 +185,9 @@ these areas MUST ship the corresponding test in the same change.
 | S14 | `CsrfTests` | Cookie-authenticated state-changing requests without the anti-CSRF token are rejected; CORS does not allow credentialed wildcard |
 | S15 | `FileUploadTests` | Disallowed extensions, mismatched magic bytes, oversized files, and double extensions are rejected; storage keys are GUIDs; path traversal in the file name cannot escape the storage root |
 | S16 | `InputValidationTests` | Oversized payloads `413`, unknown fields `400`, malformed JSON `400`, invalid enum `400`, deeply nested JSON rejected |
-| S17 | `ConcurrencyTests` (security) | Concurrent stock-outs cannot produce a negative balance; no lost update on balance; transfers are atomic across both warehouses |
+| S17 | `ConcurrencyTests` (security) | Concurrent stock-outs cannot produce a negative balance; no lost update on balance; transfers are atomic across both warehouses (TBD-22 / ADR-0047) — a forced failure between the two legs leaves **both** balances unchanged and no orphan ledger row, because there is no in-transit state that could hold stock |
 | S18 | `IdempotencyTests` | Duplicate receipts/stock-outs with the same key create one document; the same key with a different payload ⇒ `409` |
-| S19 | `SubscriptionLimitTests` | Creating a user/warehouse beyond the plan limit fails; a read-only tenant cannot write; limits cannot be bypassed with a different payload shape |
+| S19 | `SubscriptionLimitTests` | Creating a user/warehouse beyond the plan limit fails; a read-only tenant cannot write; limits cannot be bypassed with a different payload shape. **Scope note:** these are only the plan limits defined by `PlanFeature` rows. The ADR-0049 engineering figures (~50 warehouses, ~100 k products, ~10 M ledger rows) are **not** subscription limits and MUST NOT be asserted as quotas |
 | S20 | `AuditTamperTests` | No API exists or accepts a request to update or delete an audit row; non-privileged roles cannot read raw audit JSON |
 | S21 | `SecretLeakTests` | Passwords, PINs, hashes, tokens, and keys never appear in responses, logs, or audit payloads; connection strings never surface in error output |
 | S22 | `ErrorSafetyTests` | Every error response for every endpoint contains no stack trace, no SQL text, no internal host name |
@@ -156,6 +214,9 @@ these areas MUST ship the corresponding test in the same change.
 | Parallel document posting of the same document | Exactly one succeeds; the rest get `document_not_postable` |
 | Parallel posting with the same idempotency key | One document; all callers receive an equivalent response |
 | Parallel transfers A→B and B→A | Both succeed or one fails cleanly; balances always consistent; no deadlock escape hatch |
+| Injected failure between the legs of a transfer | Both balances unchanged; **zero** `StockTransaction` rows; no `StockDocument` left `Posted` (TBD-22 / ADR-0047) |
+| Transfer between two warehouses of **different** tenants | Rejected at the schema level — the composite FK `(TenantId, CounterWarehouseId)` makes it unrepresentable (TBD-24 / ADR-0048) |
+| Transfer where the caller is assigned to only one side | `404` on the unassigned side; no partial movement (BR-INV-11) |
 | Concurrent stock count posting and stock-out | Count reconciles against its cutoff; no corruption; final balance matches the ledger |
 | Long-running transaction contention | Deadlock victim retried and eventually succeeds; the retry counter is bounded and surfaced in telemetry |
 
@@ -224,7 +285,7 @@ On pull request (requires Docker):
   7. SecurityTests
   8. ConcurrencyTests
   9. Coverage threshold (see §6)
- 10. Frontend: typecheck, lint, unit tests, build
+  10. Frontend: typecheck, lint, unit tests, build
 
 Nightly:
  11. MigrationTests across all supported upgrade paths
@@ -239,6 +300,26 @@ On release:
 ```
 
 Any failure in steps 1–9 blocks the merge. Steps 10–17 block the release.
+
+**Step 5 must name `Stockly.Infrastructure` as the startup project.** `dotnet ef`
+refuses to run against `Stockly.Api`, because that project does not reference
+`Microsoft.EntityFrameworkCore.Design` (ISS-11):
+
+```powershell
+dotnet ef migrations has-pending-model-changes `
+  --project src/Stockly.Infrastructure `
+  --startup-project src/Stockly.Infrastructure
+```
+
+**Coverage reality check (2026-11-23).** Steps 1, 2, 3, 4, 5, 6, 7, 8 and 11
+have been executed locally and pass: 322 unit, 51 architecture, 33 integration,
+20 security, 3 concurrency and 4 migration — **433 in total** — plus clean
+format, `-warnaserror` build, local tool restore and model-drift gates. DB-backed
+tiers ran against `localhost\SQLEXPRESS`, not a substitute provider. ISS-10 and
+ISS-11 are resolved. Step 9 coverage data is collected by the CI workflow but the
+per-area thresholds in §6 are not yet enforced; step 10 (frontend), nightly steps
+12–15 and release steps 16–17 remain unimplemented/unrun. Docker validation is
+not claimed: Docker is unavailable on this workstation.
 
 ---
 
@@ -311,8 +392,8 @@ None of these block implementation; each carries a disposition.
 | ID | Question | Disposition |
 |---|---|---|
 | TEST-TBD-01 | Minimum hardware/CI runner size for the concurrency suite | 4 vCPU / 16 GB / SSD for the integration and concurrency suites. The suite must be deterministic on that class of runner; heavier soak runs are a separate nightly job |
-| TEST-TBD-02 | Target dataset size for performance tests | §23 TBD-25 provisional target: ~50 warehouses, ~100 k products, ~10 M ledger rows per tenant, ~200 concurrent users. Seeded by a generator, not by hand |
+| TEST-TBD-02 | Target dataset size for performance tests | ✅ **DECIDED 2026-09-30 (TBD-25 / ADR-0049):** ~50 warehouses, ~100 k products, ~10 M ledger rows per tenant, ~200 concurrent users. Seeded by a generator, not by hand. This is an **engineering and capacity target, not a subscription or commercial limit** — no test may assert that a tenant exceeding these figures is blocked, throttled or rejected, because the product does not enforce them as quotas. What the tests assert is that the design **performs** at this scale |
 | TEST-TBD-03 | Mutation testing gate for `Authorization` code specifically | **Yes, for the authorization layer only** (`dotnet stryker` restricted to the authorization project). 100% survived mutants on scope, tenant predicate, and warehouse predicate. Not applied to the rest of the codebase |
 | TEST-TBD-04 | PWA offline behaviour test strategy | §23 TBD-20 (ADR-0021): **no offline writes in V1**, so there is nothing to reconcile. The only offline test obligation is that a cached master-data read is never treated as authoritative — a stale read followed by a write must be rejected or refreshed, never silently applied |
 | TEST-TBD-05 | Arabic/English PDF golden-file testing for exports | §23 TBD-15 provisional: PDF/Excel Arabic-first arrives in V1.1, so golden-file tests are added in the phase that introduces it, not in Phase 8. CSV (in V1) is tested for encoding, delimiter, and BOM by byte-level assertion, which needs no golden file |
-| TEST-TBD-06 | Whether Docker will be installed on the dev workstation, or all DB tests stay CI-only | **CI-only until Docker exists locally.** This workstation has no Docker (see `DEVELOPMENT_STATUS.md` ISS-03). DB-backed tests must not be reported as passing when they did not run; the CI result is the only valid evidence |
+| TEST-TBD-06 | Whether Docker will be installed on the dev workstation, or all DB tests stay CI-only | **Local SQL Server now exists; Docker remains unavailable** (see `DEVELOPMENT_STATUS.md` ISS-03). DB-backed tests run against `localhost\SQLEXPRESS` with `STOCKLY_TEST_SQLSERVER` and pass; container-based validation remains unavailable and is not claimed. CI uses a SQL Server service container and is the authoritative containerised path when executed |

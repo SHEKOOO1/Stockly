@@ -10,7 +10,33 @@ Consequences, Affected components.
 
 **Status values:** `Proposed`, `Accepted`, `Superseded by ADR-XXXX`, `Rejected`
 
-> All ADRs below are **Proposed** and take effect on blueprint approval.
+> **Ratified 2026-09-30.** ADR-0001 – ADR-0050 are all **Accepted** and are in
+> force for V1. ADR-0045 – ADR-0050 record explicit product-owner decisions taken
+> on 2026-09-30; ADR-0001 – ADR-0044 were promoted from `Proposed` to `Accepted`
+> by the final blueprint ratification of the same date. No ADR was created,
+> merged, split, renumbered or rewritten by that ratification.
+>
+> Ratification accepted the blueprint as it stands. It did **not** decide any
+> outstanding `TBD` — the remaining open items keep their phase gates
+> (`PROJECT_BLUEPRINT.md` §23.1).
+>
+> **2026-10-03:** the Phase 1 implementation added **ADR-0052** as `Proposed`
+> (one canonical `Stockly` database for development and all test tiers). The
+> ratified set is therefore ADR-0001 – ADR-0050, all `Accepted`; ADR-0052 is
+> **not** ratified and its ratification is a pending owner action.
+>
+> **⚠ ADR-0051 is reserved and is NOT recorded in this file.** Seven code sites
+> already cite *ADR-0051* as the tenant-isolation decision (SQL Server row-level
+> security, the per-table TenantScope `CHECK`s and the `SESSION_CONTEXT` scope
+> channel) — see `Migrations/20261001184551_TenantIsolation.cs`,
+> `Migrations/TenantIsolationSql.cs`,
+> `Security/TenantScopeConnectionInterceptor.cs`,
+> `TenantScopeModelCacheKeyFactory.cs` and
+> `SecurityTests/TenantIsolationTests.cs`. That decision is **implemented and
+> applied to the database but has no ADR and no section in `DATABASE_DESIGN.md`
+> or `SECURITY_ARCHITECTURE.md`**. It is an open owner action
+> (`DEVELOPMENT_STATUS.md` ISS-08): ADR-0051 must be authored and ratified.
+> **Do not reuse the identifier ADR-0051 for anything else.**
 
 ---
 
@@ -18,64 +44,98 @@ Consequences, Affected components.
 
 | ID | Topic | Status |
 |---|---|---|
-| ADR-0001 | Modular Monolith over Microservices | Proposed |
-| ADR-0002 | Backend stack: ASP.NET Core, EF Core, SQL Server | Proposed |
-| ADR-0003 | Global user identity + tenant membership | Proposed |
-| ADR-0004 | Tenant context derived from the session, never from input | Proposed |
-| ADR-0005 | Warehouse scope as data, evaluated server-side | Proposed |
-| ADR-0006 | Devices belong to warehouses, not users | Proposed |
-| ADR-0007 | Short-lived JWT + rotating refresh tokens with reuse detection | Proposed |
-| ADR-0008 | PIN authentication model and hashing | Proposed |
-| ADR-0009 | Transaction-based inventory with an immutable ledger | Proposed |
-| ADR-0010 | Concurrency via atomic guarded UPDATE + rowversion + CHECK | Proposed |
-| ADR-0011 | Transactional outbox for side effects | Proposed |
-| ADR-0012 | Dot-notation permission catalogue; roles are bundles | Proposed |
-| ADR-0013 | Server-side permission resolution; permissions not in the JWT | Proposed |
-| ADR-0014 | `Idempotency-Key` on state-changing inventory operations | Proposed |
-| ADR-0015 | Append-only, tenant-aware audit log with restricted DB principal | Proposed |
-| ADR-0016 | Single DbContext with schema-per-module naming in V1 | Proposed |
-| ADR-0017 | Moving weighted average as the primary inventory valuation | Proposed |
-| ADR-0018 | FEFO as the default outbound allocation | Proposed |
-| ADR-0019 | Soft delete for master data; never delete ledger/audit | Proposed |
-| ADR-0020 | Localization: frontend i18n, `Name`/`NameAr` master data, enum codes | Proposed |
-| ADR-0021 | No offline writes in V1 | Proposed |
-| ADR-0022 | Containerised deployment: Nginx + API + SQL Server | Proposed |
-| ADR-0023 | No AI assistant inside Stockly | Proposed |
-| ADR-0024 | `decimal(18,4)` for money and quantities, per-tenant currency | Proposed |
-| ADR-0025 | Attachments in a file store behind an abstraction; GUID storage keys | Proposed |
-| ADR-0026 | Document numbering via a sequence table with a unique-index guard | Proposed |
-| ADR-0027 | RFC 9457 ProblemDetails for all errors | Proposed |
-| ADR-0028 | Layered rate limiting (edge, global, endpoint, identity, device) | Proposed |
-| ADR-0029 | UTC storage, tenant timezone for presentation | Proposed |
-| ADR-0030 | Access token in memory, refresh token in an HttpOnly cookie | Proposed |
-| ADR-0031 | Web-push subscriptions are membership-scoped and isolated | Proposed |
-| ADR-0032 | Every unique index on a tenant-scoped table leads with `TenantId` | Proposed |
-| ADR-0033 | `ProductBarcode` is the single source of truth for barcodes | Proposed |
-| ADR-0034 | Platform operators have their own session scope and login flow | Proposed |
-| ADR-0035 | Terminals are addressed by a 128-bit enrollment code | Proposed |
-| ADR-0036 | Throttle identifiers are HMAC-hashed, not plain-hashed | Proposed |
-| ADR-0037 | Append-only tables carry no `RowVersion` and no `IsCurrent` | Proposed |
-| ADR-0038 | Typed foreign keys instead of polymorphic operational references | Proposed |
-| ADR-0039 | `CHECK` constraints carry absolute invariants only | Proposed |
-| ADR-0040 | The delivery plan is eight phases | Proposed |
-| ADR-0041 | Nullable unique-key components get explicit filtered variants | Proposed |
-| ADR-0042 | SQL Server full text for V1 global search | Proposed |
-| ADR-0043 | The barcode symbology set is the six modelled values | Proposed |
-| ADR-0044 | Role grants: enumerate the 33 decisive permissions, derive the other 72 by rule D1–D5 | Proposed |
+| ADR-0001 | Modular Monolith over Microservices | **Accepted** |
+| ADR-0002 | Backend stack: ASP.NET Core, EF Core, SQL Server | **Accepted** |
+| ADR-0003 | Global user identity + tenant membership | **Accepted** |
+| ADR-0004 | Tenant context derived from the session, never from input | **Accepted** |
+| ADR-0005 | Warehouse scope as data, evaluated server-side | **Accepted** |
+| ADR-0006 | Devices belong to warehouses, not users | **Accepted** |
+| ADR-0007 | Short-lived JWT + rotating refresh tokens with reuse detection | **Accepted** |
+| ADR-0008 | PIN authentication model and hashing | **Accepted** |
+| ADR-0009 | Transaction-based inventory with an immutable ledger | **Accepted** |
+| ADR-0010 | Concurrency via atomic guarded UPDATE + rowversion + CHECK | **Accepted** |
+| ADR-0011 | Transactional outbox for side effects | **Accepted** |
+| ADR-0012 | Dot-notation permission catalogue; roles are bundles | **Accepted** |
+| ADR-0013 | Server-side permission resolution; permissions not in the JWT | **Accepted** |
+| ADR-0014 | `Idempotency-Key` on state-changing inventory operations | **Accepted** |
+| ADR-0015 | Append-only, tenant-aware audit log with restricted DB principal | **Accepted** |
+| ADR-0016 | Single DbContext with schema-per-module naming in V1 | **Accepted** |
+| ADR-0017 | Moving weighted average as the primary inventory valuation | **Accepted** |
+| ADR-0018 | FEFO as the default outbound allocation | **Accepted** |
+| ADR-0019 | Soft delete for master data; never delete ledger/audit | **Accepted** |
+| ADR-0020 | Localization: frontend i18n, `Name`/`NameAr` master data, enum codes | **Accepted** |
+| ADR-0021 | No offline writes in V1 | **Accepted** |
+| ADR-0022 | Containerised deployment: Nginx + API + SQL Server | **Accepted** |
+| ADR-0023 | No AI assistant inside Stockly | **Accepted** |
+| ADR-0024 | `decimal(18,4)` for money and quantities, per-tenant currency | **Accepted** |
+| ADR-0025 | Attachments in a file store behind an abstraction; GUID storage keys | **Accepted** |
+| ADR-0026 | Document numbering via a sequence table with a unique-index guard | **Accepted** |
+| ADR-0027 | RFC 9457 ProblemDetails for all errors | **Accepted** |
+| ADR-0028 | Layered rate limiting (edge, global, endpoint, identity, device) | **Accepted** |
+| ADR-0029 | UTC storage, tenant timezone for presentation | **Accepted** |
+| ADR-0030 | Access token in memory, refresh token in an HttpOnly cookie | **Accepted** |
+| ADR-0031 | Web-push subscriptions are membership-scoped and isolated | **Accepted** |
+| ADR-0032 | Every unique index on a tenant-scoped table leads with `TenantId` | **Accepted** |
+| ADR-0033 | `ProductBarcode` is the single source of truth for barcodes | **Accepted** |
+| ADR-0034 | Platform operators have their own session scope and login flow | **Accepted** |
+| ADR-0035 | Terminals are addressed by a 128-bit enrollment code | **Accepted** |
+| ADR-0036 | Throttle identifiers are HMAC-hashed, not plain-hashed | **Accepted** |
+| ADR-0037 | Append-only tables carry no `RowVersion` and no `IsCurrent` | **Accepted** |
+| ADR-0038 | Typed foreign keys instead of polymorphic operational references | **Accepted** |
+| ADR-0039 | `CHECK` constraints carry absolute invariants only | **Accepted** |
+| ADR-0040 | The delivery plan is eight phases | **Accepted** |
+| ADR-0041 | Nullable unique-key components get explicit filtered variants | **Accepted** |
+| ADR-0042 | SQL Server full text for V1 global search | **Accepted** |
+| ADR-0043 | The barcode symbology set is the six modelled values | **Accepted** |
+| ADR-0044 | Role grants: enumerate the 33 decisive permissions, derive the other 72 by rule D1–D5 | **Accepted** |
+| ADR-0045 | No location-level inventory in V1; warehouse is the V1 stock scope (TBD-19) | **Accepted** |
+| ADR-0046 | One currency per Tenant in V1; no multi-currency, no FX (TBD-21) | **Accepted** |
+| ADR-0047 | Warehouse transfers are instantaneous in V1; no in-transit state (TBD-22) | **Accepted** |
+| ADR-0048 | One Tenant is one legal/business entity; no entity hierarchy (TBD-24) | **Accepted** |
+| ADR-0049 | V1 engineering scale target (TBD-25) | **Accepted** |
+| ADR-0050 | Stock reservation semantics are unresolved future scope (TBD-26) | **Accepted** |
+| ADR-0051 | *(reserved — tenant isolation / RLS; cited by code, not yet recorded)* | **not written** |
+| ADR-0052 | One canonical `Stockly` database for development and all test tiers | **`Proposed`** |
 
-**Total: 44 ADRs.** ADR-0001–ADR-0031 are the original architecture set;
-ADR-0032–ADR-0044 were added during blueprint finalization to close contradictions
-that the original set left open (index tenant-scoping, barcode ownership, platform
-authorization, terminal identity, throttle hashing, append-only semantics,
-referential integrity, `CHECK` scope, phase count, nullable unique keys, search
-engine, symbologies, role-grant completeness). ADR-0008 is the PIN/password
-hashing decision; ADR-0018 is the FEFO decision extended by ADR-0041.
+ADR-0001–ADR-0031 are the original architecture set; ADR-0032–ADR-0044 were added
+during blueprint finalization to close contradictions that the original set left
+open (index tenant-scoping, barcode ownership, platform authorization, terminal
+identity, throttle hashing, append-only semantics, referential integrity,
+`CHECK` scope, phase count, nullable unique keys, search engine, symbologies,
+role-grant completeness). ADR-0045–ADR-0050 record the product owner's explicit
+decisions of 2026-09-30 and were `Accepted` from the outset, because they *are*
+the owner's decisions rather than proposals awaiting approval. ADR-0001–ADR-0044
+were `Proposed` until the final blueprint ratification of 2026-09-30 and are now
+`Accepted`. ADR-0008 is the PIN/password hashing decision; ADR-0018 is the FEFO
+decision extended by ADR-0041.
+
+**ADR-0051 is reserved** for the tenant-isolation decision that the Phase 1 code
+already cites (row-level security, TenantScope `CHECK`s, `SESSION_CONTEXT`) but
+that was never recorded here; it is listed in the index as *not written* and is
+tracked as ISS-08. **ADR-0052** was added on 2026-10-03 during Phase 1
+implementation and is `Proposed`, not `Accepted`: it is an engineering decision
+taken to satisfy the already-ratified `TESTING_STRATEGY.md` §1.4, not a
+product-owner decision, and it has **not** been ratified. Ratification of
+ADR-0052 is an owner action.
+
+### Status summary
+
+| Status | Count | IDs |
+|---|---|---|
+| `Accepted` — ratified with blueprint v1.1 on 2026-09-30 | **44** | ADR-0001 – ADR-0044 |
+| `Accepted` — explicit product-owner decisions, 2026-09-30 | **6** | ADR-0045 – ADR-0050 |
+| `Proposed` — awaiting owner ratification | **1** | ADR-0052 |
+| *Reserved, not yet written* | **1** | ADR-0051 (ISS-08) |
+| `Superseded` / `Rejected` | **0** | — |
+
+**Total: 51 written ADRs — 50 `Accepted`, 1 `Proposed`** (plus ADR-0051
+reserved and not yet written).
 
 ---
 
 ## ADR-0001 — Modular Monolith over Microservices
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Build Stockly as a single deployable ASP.NET Core application
 organised into business modules with enforced boundaries. No microservices.
@@ -101,7 +161,7 @@ extracting a module, not rewriting the system.
 
 ## ADR-0002 — Backend stack: ASP.NET Core, EF Core, SQL Server
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** ASP.NET Core Web API on **.NET 10 (LTS)**, EF Core with the SQL
 Server provider, SQL Server 2022, REST + OpenAPI.
@@ -124,7 +184,7 @@ acceptable for integration/concurrency tests.
 
 ## ADR-0003 — Global user identity + tenant membership
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `AppUser` is a **global** identity with no `TenantId`. Access to an
 organization is granted by `TenantMembership` (user to tenant), which carries the
@@ -150,7 +210,7 @@ global table and therefore never tenant-filtered (a documented exception).
 
 ## ADR-0004 — Tenant context derived from the session, never from input
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** The tenant of a request comes from the validated token/session
 claims. A `tenantId` supplied in a body, query, route, or header is **rejected as
@@ -173,7 +233,7 @@ sharing links), body field (rejected: mass assignment).
 
 ## ADR-0005 — Warehouse scope as data, evaluated server-side
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Warehouse authorization is a data relationship
 (`MembershipWarehouse`), fully independent of roles. The effective permission for
@@ -198,7 +258,7 @@ slightly heavier (mitigated by a short-lived cache with immediate invalidation).
 
 ## ADR-0006 — Devices belong to warehouses, not users
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** A `Device` belongs to exactly one tenant and exactly one warehouse.
 An `AuthSession` references the user, the membership, and optionally the device.
@@ -222,7 +282,7 @@ cryptographically proven — recorded as SEC-KNW-01.
 
 ## ADR-0007 — Short-lived JWT + rotating refresh tokens with reuse detection
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Access token is an RS256 JWT with a 15-minute lifetime, carrying
 identity claims only (`sub`, `mid`, `tid`, `sid`, `did`, `jti`). Refresh token is
@@ -252,7 +312,7 @@ is immediate. Key rotation needs an overlap procedure.
 
 ## ADR-0008 — PIN authentication model and hashing
 
-**Date:** 2026-09-27 · **Status:** Proposed (algorithm TBD-02)
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30; algorithm TBD-02)
 
 **Decision:** Terminal PINs are 6 to 12 digits, hashed with a memory-hard KDF
 (Argon2id preferred, BCrypt acceptable), compared in constant time, never returned
@@ -280,7 +340,7 @@ than optional.
 
 ## ADR-0009 — Transaction-based inventory with an immutable ledger
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Stock quantity is never directly editable. `StockDocument` and
 `StockDocumentLine` are posted into an immutable `StockTransaction` ledger, and
@@ -306,7 +366,7 @@ mechanism; a tested rebuild job must exist.
 
 ## ADR-0010 — Concurrency via atomic guarded UPDATE + rowversion + CHECK
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Balance mutation is a single conditional `UPDATE`
 (`SET OnHand = OnHand - @qty WHERE Id = @id AND OnHand >= @qty`) inside an
@@ -334,7 +394,7 @@ consistent lock ordering plus bounded retry.
 
 ## ADR-0011 — Transactional outbox for side effects
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Notification fan-out, push delivery, and report generation are
 written as `ops.OutboxMessage` rows **inside the business transaction** and
@@ -360,7 +420,7 @@ Dead-letter handling and alerting are required.
 
 ## ADR-0012 — Dot-notation permission catalogue; roles are bundles
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Permissions are globally seeded, read-only codes
 (`module.resource.action`, 107 of them). Roles are tenant-scoped named bundles of
@@ -386,7 +446,7 @@ Role customisation is limited in V1 (see RP-TBD-01).
 
 ## ADR-0013 — Server-side permission resolution; permissions not in the JWT
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** The access token carries identity and session claims only.
 Effective permissions are resolved server-side per request from a resolver with a
@@ -414,7 +474,7 @@ covered by tests.
 
 ## ADR-0014 — `Idempotency-Key` on state-changing inventory operations
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Posting a stock document, a goods receipt, or a stock-count
 submission requires an `Idempotency-Key` header (16 to 100 chars). The key is
@@ -438,7 +498,7 @@ exact representation of the original.
 
 ## ADR-0015 — Append-only, tenant-aware audit log with a restricted DB principal
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `audit.AuditLog` is append-only, partitioned monthly, and the
 application database principal has **no** `UPDATE` or `DELETE` grant on it.
@@ -466,7 +526,7 @@ the application. Retention is TBD-14.
 
 ## ADR-0016 — Single DbContext with schema-per-module naming in V1
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** One `StocklyDbContext` with a single migrations assembly; tables are
 placed in per-module schemas (`identity.`, `inventory.`, and so on). Module
@@ -494,7 +554,7 @@ splitting contexts exists if a module ever needs independent scaling.
 
 ## ADR-0017 — Moving weighted average as the primary inventory valuation
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Stock value is the moving weighted average per (tenant, warehouse,
 product), updated on receipt. Issuing does not change the average. Where no
@@ -520,7 +580,7 @@ stock-out; the ledger retains actual costs for audit.
 
 ## ADR-0018 — FEFO as the default outbound allocation
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Outbound stock allocation consumes lots in ascending expiry order,
 then earliest `ReceivedAtUtc`, then lowest id. Explicit batch selection is
@@ -543,7 +603,7 @@ with ties; reports should highlight lots that will expire before expected use.
 
 ## ADR-0019 — Soft delete for master data; never delete ledger or audit
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Master and configuration data use `IsDeleted` with filtered unique
 indexes (so codes can be reused). Ledger (`StockTransaction`), audit
@@ -569,7 +629,7 @@ permission (see `API_CONVENTIONS.md` §5.3), never a single global permission.
 
 ## ADR-0020 — Localization strategy
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** UI strings live in the frontend i18n resources. Master data carries
 `Name` (canonical) plus optional `NameAr`. Enums cross the wire as stable codes.
@@ -594,7 +654,7 @@ a separate open question (TBD-15).
 
 ## ADR-0021 — No offline writes in V1
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** The V1 PWA is online-first. Offline read caching of master data is
 permitted; **offline stock posting is not**. If the network drops during an
@@ -619,7 +679,7 @@ and must be documented. Revisit in V2 with a designed reconciliation protocol.
 
 ## ADR-0022 — Containerised deployment: Nginx + API + SQL Server
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** V1 deployment is Docker Compose: Nginx terminating TLS and serving
 the PWA, the API on an internal port only, SQL Server on an internal port only,
@@ -644,7 +704,7 @@ tested. Migrations run as a gated step, not on app start.
 
 ## ADR-0023 — No AI assistant inside Stockly
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Stockly the product contains **no** AI assistant, chatbot, copilot,
 or conversational AI feature. AI may be used in the development process only.
@@ -665,7 +725,7 @@ AI-generated content in the database model.
 
 ## ADR-0024 — `decimal(18,4)` for money and quantities, per-tenant currency
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** All money and quantity values are `decimal(18,4)` with at most four
 decimal places. Currency is a per-tenant setting expressed as an ISO-4217 code.
@@ -689,7 +749,7 @@ test asserts the database rejects 5-decimal values.
 
 ## ADR-0025 — Attachments in a file store behind an abstraction, GUID storage keys
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Files are stored behind an `IFileStore` abstraction (local volume
 in V1, S3-compatible later). The storage key is a server-generated GUID path; the
@@ -716,7 +776,7 @@ public or signed URL shortcuts that skip authorization.
 
 ## ADR-0026 — Document numbering via a sequence table
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Document numbers come from `ops.DocumentSequence` per (tenant,
 document type, period), allocated with an atomic
@@ -740,7 +800,7 @@ and expected.
 
 ## ADR-0027 — RFC 9457 ProblemDetails for all errors
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** All non-2xx responses use `application/problem+json` per RFC 9457
 with `type`, `title`, `status`, `detail`, `instance`, `traceId`, a stable `code`,
@@ -763,7 +823,7 @@ assert no stack traces or SQL ever appear.
 
 ## ADR-0028 — Layered rate limiting
 
-**Date:** 2026-09-27 · **Status:** Proposed (numbers TBD-04)
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30; numbers TBD-04)
 
 **Decision:** Rate limiting is layered: edge (Nginx, per IP), global (per IP),
 per-endpoint-group, per-identity for auth, per-device, per-membership, and
@@ -788,7 +848,7 @@ shared store — SEC-KNW-05). A trusted-proxy configuration is mandatory.
 
 ## ADR-0029 — UTC storage, tenant timezone for presentation
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** All timestamps are stored as UTC `datetime2(3)`. Each tenant has a
 timezone. Report date filters are interpreted in the tenant timezone and
@@ -812,7 +872,7 @@ timezone-aware; the frontend formats using the tenant timezone.
 
 ## ADR-0030 — Access token in memory, refresh token in an HttpOnly cookie
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** The PWA keeps the access token in memory only (lost on reload) and
 receives the refresh token as an `HttpOnly; Secure; SameSite=Strict` cookie scoped
@@ -841,7 +901,7 @@ refreshes (see S7).
 
 ## ADR-0031 — Web-push subscriptions are membership-scoped and tenant-isolated
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** A `PushSubscription` belongs to exactly one membership, optionally
 one device, and is used only for notifications targeted at that membership within
@@ -869,7 +929,7 @@ no endpoint returns subscription keys.
 
 ## ADR-0032 — Every unique index on a tenant-scoped table leads with `TenantId`
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Any unique index or unique constraint on a tenant-scoped table
 MUST have `TenantId` as its **leading** column, so uniqueness is enforced within
@@ -907,7 +967,7 @@ enrollment, attachment blob fetch) uses its own documented unique index.
 
 ## ADR-0033 — `master.ProductBarcode` is the single source of truth for barcodes
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `master.Product` has **no** `Barcode` column. Every barcode lives in
 `master.ProductBarcode`, which carries `(TenantId, Barcode)` as a unique key and
@@ -933,7 +993,7 @@ hits one covering index; no data migration is needed (V1 has no data).
 
 ## ADR-0034 — Platform operators have their own session scope and login flow
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `identity.AuthSession` gains `SessionScope` (`1=Tenant`,
 `2=Platform`) with `TenantId` and `MembershipId` **nullable** and a `CHECK`
@@ -967,7 +1027,7 @@ used on each other's routes; a platform session list is available for audit.
 
 ## ADR-0035 — Terminals are addressed by a 128-bit enrollment code
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `identity.Device` gains `EnrollmentCode` (128-bit random,
 base32url, globally unique, rotatable, never displayed to end users). The shared
@@ -1002,7 +1062,7 @@ cryptographically proven is recorded as SEC-KNW-01/SEC-KNW-08 in
 
 ## ADR-0036 — Throttle identifiers are HMAC-hashed, not plain-hashed
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `identity.LoginAttempt.IdentifierHash` and
 `EnrollmentCodeHash` are `HMAC-SHA256(value, serverPepper)` with the value
@@ -1035,7 +1095,7 @@ startup or the app fails closed.
 
 ## ADR-0037 — Append-only tables carry no `RowVersion` and no `IsCurrent`
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** `audit.AuditLog`, `inventory.StockTransaction`,
 `purchasing.ProductPriceHistory`, `events.EventShortageSnapshot`,
@@ -1070,7 +1130,7 @@ reason (a forward pointer to a row written later).
 
 ## ADR-0038 — Typed foreign keys instead of polymorphic operational references
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Operational integrity tables use typed nullable foreign keys with a
 `CHECK` requiring exactly one source, plus a small integer tag for the API:
@@ -1103,7 +1163,7 @@ serialises the tag for clients while the database relies on the FK.
 
 ## ADR-0039 — `CHECK` constraints carry absolute invariants only
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** A `CHECK` constraint is used only when **no** business scenario may
 ever violate the rule. Where the product allows a documented exception, the bound
@@ -1139,16 +1199,21 @@ constraints.
 
 ## ADR-0040 — The delivery plan is eight phases
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Delivery is organised as **Phase 0** (blueprint) plus **eight**
 implementation phases, defined in `PROJECT_BLUEPRINT.md` §25: 1 Foundation +
 Architecture + Database + Security Core; 2 Identity + Tenants + Warehouses +
 RBAC; 3 Products + Units + Inventory Engine; 4 Devices + Shared Terminal +
-Purchasing; 5 Batches + Expiry + Waste + Transfers + Stocktake + Locations +
-Barcode/QR; 6 Events + Recipes + Food Cost + Forecasting; 7 Reports +
+Purchasing; 5 Batches + Expiry + Waste + Transfers + Stocktake + Barcode/QR;
+6 Events + Recipes + Food Cost + Forecasting; 7 Reports +
 Notifications + SaaS + Search + Customization; 8 Frontend PWA + Terminal UI +
 Full System Testing + Production.
+
+> **Amended by ADR-0045 (2026-09-30).** The Phase 5 title originally read
+> *"… + Stocktake + **Locations** + Barcode/QR"*, which presented warehouse
+> sub-locations as a V1 capability and conflicted with the owner's TBD-19
+> decision. "Locations" is removed. The phase count (eight) is unchanged.
 
 **Reason:** the previous plan had eleven implementation phases. Authentication
 was separated from identity even though neither is testable without the other,
@@ -1163,7 +1228,7 @@ be independently demonstrated). A feature-per-phase backlog (rejected: no
 security spine until late).
 
 **Consequences:** every document that referenced "Phase 9/10/11" must be
-remapped; `PROJECT_BLUEPRINT.md` §25 carries the explicit legacy mapping.
+remapped; `PROJECT_BLUEPRINT.md` §25.1 carries the explicit legacy mapping.
 
 **Affected:** `PROJECT_BLUEPRINT.md` §25, `ARCHITECTURE.md`,
 `TESTING_STRATEGY.md` §2, `DEVELOPMENT_STATUS.md`, `README.md`.
@@ -1172,7 +1237,7 @@ remapped; `PROJECT_BLUEPRINT.md` §25 carries the explicit legacy mapping.
 
 ## ADR-0041 — Nullable unique-key components get explicit filtered variants
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** Any unique index that includes a nullable column gets an explicit
 `WHERE <col> IS NULL` variant for each null shape that must be unique. Affected
@@ -1206,7 +1271,7 @@ Id)`.
 
 ## ADR-0042 — SQL Server full text for V1 global search
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** V1 global search uses a SQL Server `FULLTEXT` catalog with the
 `Arabic_CI_AS` collation over `master.Product`, `master.ProductBarcode`,
@@ -1237,7 +1302,7 @@ requires it.
 
 ## ADR-0043 — The barcode symbology set is the six modelled values
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** V1 supports EAN-13, EAN-8, UPC-A, Code-128, QR and DataMatrix —
 exactly the values the `Symbology` enum already models. Validation is
@@ -1264,7 +1329,7 @@ validation is unit-tested per value; `Code128` is the documented fallback.
 
 ## ADR-0044 — Role grants are enumerated for decisions and derived by rule for reads
 
-**Date:** 2026-09-27 · **Status:** Proposed
+**Date:** 2026-09-27 · **Status:** Accepted (ratified 2026-09-30)
 
 **Decision:** the role → permission matrix enumerates the 33 permissions that
 determine what a role can *do* (writes, approvals, dangerous actions, and the
@@ -1309,6 +1374,396 @@ that is a feature, and the architecture test is what enforces it.
 
 **Affected:** `ROLES_PERMISSIONS.md` §3, seeding migration (Phase 1),
 `Stockly.ArchitectureTests`, `TESTING_STRATEGY.md` §3.2.
+
+---
+
+## ADR-0045 — No location-level inventory in V1; the warehouse is the V1 stock scope
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-19** · **Date:** 2026-09-30 ·
+**Status:** Accepted (product-owner decision) · **Effective version:** V1
+(descriptive sub-locations: V1.1 · location-level stock: V2 redesign)
+
+**Topic:** Do warehouses need sub-locations (aisles / bins / racks) in V1?
+
+**Owner decision.**
+
+1. There is **no stock / bin / location-level inventory in V1**. V1 inventory is
+   **warehouse-level**: `WarehouseId` is the finest inventory scope in the model.
+2. **V1.1** may introduce **descriptive** warehouse sub-locations only — an
+   operator-facing label attached to a warehouse, which owns no stock.
+3. If true bin/location-level **stock ownership** is ever required, it is a **V2
+   redesign**, not a quiet addition to V1 or V1.1.
+4. Phase 5 MUST NOT present warehouse locations as a V1 capability.
+
+**Reason:** the question was open (TBD-19) while three documents already behaved
+as though it were closed, and `PROJECT_BLUEPRINT.md` §25 named Phase 5
+*"Batches + Expiry + Waste + Transfers + Stocktake + **Locations** + Barcode/QR"* —
+the delivery plan had effectively pre-empted the owner. The consequence of
+location-scoped stock is severe and was previously understated: adding
+`LocationId` to `inventory.StockBalance` and `inventory.InventoryLot` would change
+the unique indexes that the guarded `UPDATE` depends on (`UX_StockBalance`,
+`UX_InventoryLot_NonBatched`, `UX_InventoryLot_Batch`, §11.5), i.e. it would
+change the correctness-critical index set of a module already described as a
+transaction-based ledger. It would also risk turning sub-locations into a second
+authorization axis, which `ROLES_PERMISSIONS.md` RP-TBD-04 correctly rejects, and
+it could not be reconciled with `identity.Device`, which is bound to exactly one
+warehouse (`§10`).
+
+**Alternatives considered.** Location-scoped stock in V1 (rejected by the owner:
+it rewrites the guarded-update index set and the authorization chain). V1.1 with
+location-scoped stock (rejected by the owner: V1.1 is additive by construction;
+this would not be). Dropping locations entirely (rejected: descriptive
+sub-locations are useful to operators and cost nothing in the stock model).
+
+**Consequences.** `WarehouseId` remains the finest stock scope in V1 and V1.1; no
+V1 table carries a location or bin key; `BR-ORG-07` is restated as an owner
+decision rather than a deferred question; Phase 5 loses "Locations"; RP-TBD-04 is
+closed with a recorded answer. The entity count remains **66** and the schema
+count remains **12**: this decision **adds nothing and removes nothing**.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §3, §4.5, §24, §25, ADR-0040;
+`DATABASE_DESIGN.md` §4.2 `identity.Warehouse`, §7, DB-TBD-02;
+`BUSINESS_RULES.md` BR-ORG-07, BR-TBD-12; `ROLES_PERMISSIONS.md` RP-TBD-04;
+`WORKFLOWS.md`; `README.md`; `ADR-0040` (phase-5 title).
+
+---
+
+## ADR-0046 — One currency per Tenant in V1; no multi-currency and no FX
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-21** · **Date:** 2026-09-30 ·
+**Status:** Accepted (product-owner decision) · **Effective version:** V1
+
+**Topic:** Is Stockly single-currency or multi-currency with FX rates?
+
+**Owner decision.**
+
+1. **One currency per Tenant in V1.** The currency is a tenant setting
+   (`identity.TenantSetting.CurrencyCode`).
+2. **No multi-currency and no FX conversion.** V1 ships **no FX rate table and no
+   conversion logic of any kind**.
+3. All monetary values are interpreted in the Tenant's configured currency.
+4. Multi-currency / FX is future scope and **must not leak into the V1 schema or
+   the V1 workflows**.
+
+**Reason:** the item was open (TBD-21), yet `PROJECT_BLUEPRINT.md` §14 rule 7,
+`DATABASE_DESIGN.md` DB-TBD-04 and `BR-TBD-13`-adjacent text already asserted it
+as a *"disposition"* and an *"Owner decision"* although no owner decision existed
+— a false disposition. Resolving it in favour of a single currency is also the
+only choice that keeps inventory valuation coherent: the primary valuation method
+is a moving weighted average per `(Tenant, Warehouse, Product)` (`ADR-0017`),
+which is meaningless if inbound invoices may arrive in mixed currencies with no
+stated valuation rule.
+
+**Alternatives considered.** Multi-currency per document with an FX rate table
+(rejected by the owner: introduces a conversion surface and a financial-integrity
+attack surface that V1 does not need). Single currency plus a base-currency
+reporting translation (rejected: a partial version of the same feature).
+
+**Consequences.** `Supplier.CurrencyCode`, `PurchaseOrder.CurrencyCode` and
+`EventFoodCostSnapshot.CurrencyCode` remain **informational only** and MUST NOT
+trigger conversion. `platform.Plan.CurrencyCode` describes the **commercial**
+price of the plan and is not tenant inventory money. No FX table is created; if a
+future version needs one it is additive, so this decision never invalidates V1
+data.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §14 rule 7, §22, §23.1, §24;
+`DATABASE_DESIGN.md` `purchasing.Supplier`, `purchasing.PurchaseOrder`,
+`food.EventFoodCostSnapshot`, DB-TBD-04; `ADR-0024`; `API_CONVENTIONS.md`
+§9 (raw decimal + ISO currency code).
+
+---
+
+## ADR-0047 — Warehouse transfers are instantaneous in V1
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-22** · **Date:** 2026-09-30 ·
+**Status:** Accepted (product-owner decision) · **Effective version:** V1
+
+**Topic:** Is a warehouse transfer instantaneous, or does it pass through an
+in-transit virtual warehouse?
+
+**Owner decision.**
+
+1. Inventory transfers are **instantaneous in V1**.
+2. There is **no virtual or in-transit warehouse** and **no transfer-in-transit
+   accounting or state machine in V1**.
+3. A transfer **atomically decreases the source warehouse and increases the
+   destination warehouse**, in one database transaction.
+4. The transfer remains **fully auditable**: both legs are recorded and audited.
+5. Future in-transit logistics may be considered later, but must not be implied
+   as V1.
+
+**Reason:** the item was open (TBD-22), yet `PROJECT_BLUEPRINT.md` §11.2,
+`WORKFLOWS.md` §7, `BUSINESS_RULES.md` BR-TBD-13 and `DATABASE_DESIGN.md`
+DB-TBD-05 all described it as an existing *"disposition"* or *"Owner decision"*.
+Resolving it settles the false disposition. The instantaneous model is also the
+safer default under the warehouse-authorization model: a virtual in-transit
+warehouse would have to be a real, fully-authorized `identity.Warehouse` row or
+in-transit stock would sit in a location covered by no `MembershipWarehouse`,
+which is exactly the warehouse-escape class the security suite exists to detect.
+
+**Alternatives considered.** A virtual in-transit warehouse (rejected by the
+owner: creates a stock location that is not a physical, access-controlled site,
+and forces the warehouse scope model to admit a non-physical warehouse). A
+transfer document with explicit Ship and Receive steps (rejected by the owner: a
+state machine is a V2 concern).
+
+**Consequences.** A transfer is one `StockDocument` with
+`MovementType = TRANSFER`, `WarehouseId` = source and `CounterWarehouseId` = target,
+producing two `StockTransaction` rows (one negative, one positive) that share the
+document reference. Both legs post or neither does. Both `WarehouseId` values are
+inside the same `TenantId`. No new table, column, status value or permission is
+introduced, so the entity count remains **66**.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §11.2, §23.1, §24;
+`DATABASE_DESIGN.md` §7 (`CounterWarehouseId`), DB-TBD-05;
+`BUSINESS_RULES.md` BR-TBD-13 and the transfer rules;
+`WORKFLOWS.md` §7; `SECURITY_ARCHITECTURE.md` §15 (no in-transit limitation to
+register).
+
+---
+
+## ADR-0048 — One Tenant is one legal/business entity; no entity hierarchy
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-24** · **Date:** 2026-09-30 ·
+**Status:** Accepted (product-owner decision) · **Effective version:** V1
+
+**Topic:** Can a Tenant contain several business/legal entities?
+
+**Owner decision.**
+
+1. **One Tenant represents one legal/business entity in V1.**
+2. Multiple legal entities inside a single Tenant are **not supported**.
+3. **No parent-tenant or legal-entity hierarchy is introduced for V1.**
+4. Multi-entity support is **future scope / a stated non-goal**.
+
+**Reason:** the item was open (TBD-24) with **no supporting content anywhere** in
+the design set — no entity, no field, no rule, only the register entry. It was
+nevertheless the highest-severity open question relative to its apparent
+simplicity, because the whole isolation model rests on `TenantId` leading every
+unique index (`ADR-0032`) and being taken from the authenticated session only
+(`AGENTS.md` §4). A parent grouping **above** tenant is precisely the shape that
+produces cross-tenant read defects, and it would introduce a scope value that
+every tenant predicate has to get right. Recording it as an explicit non-goal is
+what stops a later contributor from "helpfully" adding that scope without the
+isolation analysis it would require.
+
+**Alternatives considered.** A `LegalEntity` entity inside the Tenant (rejected by
+the owner: unsupported). A parent tenant grouping (rejected by the owner: a new
+scope above tenant, and therefore a new class of isolation bug).
+
+**Consequences.** `identity.Tenant` is the single organizational and legal
+boundary. The permission model, the warehouse model, the ledger and every report
+group by `TenantId` and nothing else. Nothing in the entity catalogue, the FK
+design, the permission model or the workflows implies multi-entity support. No
+table is added or removed; the entity count remains **66**.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §2, §4, §5, §23.1, §24;
+`DATABASE_DESIGN.md` §3 (tenant-scoping rules), `identity.Tenant`;
+`SECURITY_ARCHITECTURE.md` §2 (trust boundaries); `ROLES_PERMISSIONS.md` §1.
+
+---
+
+## ADR-0049 — V1 engineering scale target
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-25** · **Date:** 2026-09-30 ·
+**Status:** Accepted (product-owner decision) · **Effective version:** V1
+
+**Topic:** What reporting/performance scale must the V1 schema and queries
+support?
+
+**Owner decision — provisional V1 engineering scale target.**
+
+| Dimension | Target per Tenant |
+|---|---|
+| Warehouses | ~50 |
+| Products | ~100,000 |
+| Inventory ledger rows | ~10,000,000 |
+| Concurrent users | ~200 |
+
+These are **engineering and design targets, not hard commercial limits**. They
+guide indexing, query design, pagination, reporting strategy, ledger
+partitioning considerations, performance tests and database architecture. They
+MUST NOT be turned into SaaS subscription limits unless separately specified by
+the owner.
+
+**Reason:** this was the one genuinely Phase-1-relevant open item, because Phase 1
+creates all 12 schemas *with their indexes and partitioning* (§25 Phase 1).
+Re-strategizing the `inventory.StockTransaction` index and partition design after
+the fact means an online index rebuild on the largest table in the system under
+production load. The provisional numbers already existed in
+`TESTING_STRATEGY.md` TEST-TBD-02 but had never been confirmed, so the sizing
+rationale behind the index set was unratified.
+
+**Alternatives considered.** A smaller target (rejected: it would not exercise
+the ledger at a size where partitioning and keyset pagination matter, so the
+design would be validated against a regime it will never run in). A larger target
+(rejected by the owner as unjustified for V1). Expressing the numbers as plan
+limits (explicitly excluded: subscription limits are a commercial decision and
+belong to `platform.PlanFeature` / `SubscriptionUsage`, which already exist).
+
+**Consequences.** `inventory.StockTransaction` indexes and monthly partitioning
+(`PROJECT_BLUEPRINT.md` §16 rule 2) are designed against ~10 M rows per tenant.
+Keyset/cursor pagination stays mandatory for every unbounded list
+(`API_CONVENTIONS.md` API-TBD-01) because `OFFSET` degrades on exactly these
+tables. Export row and time-window caps (`BR-RPT-06`) and the per-user report rate
+limit are sized from this target. The performance dataset is generated, not
+hand-authored, so the target is reproducible in CI
+(`TESTING_STRATEGY.md` TEST-TBD-02). **No `PlanFeature` limit is derived from
+these numbers.**
+
+**Affected:** `PROJECT_BLUEPRINT.md` §18, §20, §23.1;
+`DATABASE_DESIGN.md` §7 (index and partition design);
+`TESTING_STRATEGY.md` TEST-TBD-01, TEST-TBD-02; `API_CONVENTIONS.md` API-TBD-01
+and §10 rate limits; `BUSINESS_RULES.md` BR-RPT-06.
+
+---
+
+## ADR-0050 — Stock reservation semantics are unresolved future scope
+
+**Reference:** `PROJECT_BLUEPRINT.md` §23.1 **TBD-26** (newly created) ·
+**Date:** 2026-09-30 · **Status:** Accepted (product-owner decision to *defer*) ·
+**Effective version:** V2 candidate — pending a future owner decision
+
+**Topic:** What are stock reservation semantics for event planning?
+
+**Owner decision.**
+
+1. A dedicated open question is created: **TBD-26 — Stock Reservation Semantics**.
+2. Stock reservation semantics are **NOT part of the currently finalized V1
+   inventory posting model**, and require a **future owner decision**.
+3. No final reservation design is adopted here. Whether reservations are **hard**
+   (blocking) or **soft** (advisory) is **not decided** and MUST NOT be assumed by
+   an implementer.
+4. No reservation table is implemented in V1.
+5. TBD-10 no longer covers reservations.
+
+**Reason:** TBD-10 was overloaded. A single identifier was being cited for four
+unrelated questions — recipe serving/yield semantics, consumption planning
+semantics, pack-size rounding, and the stock-reservation deferral. The
+consequence was a **traceability defect with a real edge**: `PROJECT_BLUEPRINT.md`
+§4.5 and `DATABASE_DESIGN.md` DB-TBD-03 asserted that reservations were *"deferred
+to V2"* citing TBD-10, but §23.1's TBD-10 text covers only recipes and planning,
+so the deferral rested on a citation that did not support it. Splitting the item
+gives the reservation question its own identity and removes the false support.
+
+**Alternatives considered.** Deleting the reservation question (rejected by the
+owner: it must remain a visible open item, not vanish). Reusing an existing later
+identifier (rejected: TBD-13 and TBD-23 are unrelated topics and reusing them
+would create the same traceability failure). Inventing a reservation design now
+(rejected: an unowned design decision is exactly what this document exists to
+prevent).
+
+**Consequences.** TBD-26 is an **open owner decision** listed under future /
+deferred items. `inventory.StockReservation` is **not a V1 entity** and must not
+appear in the 66-entity V1 catalogue. The permission code
+`inventory.reservations.manage` is already seeded and **granted to nobody in V1**
+(`ADR-0044` rule D3) — this stays correct and is now explicitly justified by this
+ADR. `inventory.StockBalance.ReservedQuantity` and
+`inventory.InventoryLot.ReservedQuantity` continue to exist and are **always
+`0` in V1**, so `events.EventShortageSnapshot` already contains the reserved term
+and is correct when reservations arrive. §24 records reservations as a **V2
+candidate pending TBD-26**, not as a decided V2 feature.
+
+**Affected:** `PROJECT_BLUEPRINT.md` §4.5, §13 rule 2, §23.1, §24;
+`DATABASE_DESIGN.md` `inventory.StockBalance`, `inventory.InventoryLot`, DB-TBD-03;
+`BUSINESS_RULES.md` BR-INV-04; `ROLES_PERMISSIONS.md` §3 (D3) and the
+`inventory.reservations.manage` row; `ADR-0044`; `TESTING_STRATEGY.md`.
+
+---
+
+## ADR-0052 — One canonical `Stockly` database for development and all test tiers
+
+**Reference:** `TESTING_STRATEGY.md` §1.4 · **Date:** 2026-10-03 ·
+**Status:** **Proposed** — *not ratified; ratification is a pending owner action* ·
+**Effective version:** Phase 1
+
+**Topic:** May test suites run against their own freshly-created databases, or is
+there one canonical database that every tier shares?
+
+**Decision.**
+
+1. There is exactly **one** Stockly database, named **`Stockly`**. It is created
+   and maintained **only** by applying EF Core migrations. Its schema MUST be at
+   head migration (`20261001184551_TenantIsolation`) before any test runs.
+2. The API, the design-time factory, the integration tier and the security tier
+   all target that one database. **No suite, test class or test run may create,
+   drop, rebuild or re-migrate a database.**
+3. Tests isolate from each other by **data**, not by database: each test creates
+   its own tenant(s) and child rows and **destroys them in its own teardown**
+   (`TESTING_STRATEGY.md` §1.4). Tests MUST NOT assume the database is otherwise
+   empty, MUST NOT use unfiltered global reads to make assertions, and MUST NOT
+   weaken a RLS/TenantScope assertion by running as an unscoped principal.
+4. The database target is supplied to tests by the **`STOCKLY_TEST_SQLSERVER`**
+   environment variable and MUST NOT be hardcoded. The suite fails loudly if it is
+   unset; it MUST NOT silently fall back to a default or to `(localdb)`.
+5. Schema conformance is a **gate, not a hope**: `tools/Stockly.VerifyDatabase.sql`
+   asserts the catalogue invariants (13 schemas, 66 domain tables, 185 FKs,
+   156 `CHECK`s, 60 TenantScope `CHECK`s, 60 RLS filter predicates, 0 untrusted or
+   disabled constraints) and any deviation fails the build.
+6. **Documented exception.** A test whose purpose is to verify migration or
+   DDL behaviour from an empty database cannot use the canonical database,
+   because doing so would destroy it. Such a test MUST create a uniquely-named
+   temporary database, MUST drop it in a `finally` block, MUST be the only test in
+   its collection, and MUST NOT be used by any other tier. This is the only
+   sanctioned way to create a database in this project.
+
+**Reason.** The per-suite-database approach had already produced a **false-green
+security posture**. Twelve databases named `Stockly_Phase1_*` / `Stockly_*Probe`
+existed alongside the canonical one, and inspection showed the stale copies
+carried **0 RLS policies and 0 TenantScope `CHECK` constraints** against the
+canonical database's 1 policy and 60 scope checks. Any isolation test executing
+against those copies was asserting against a database that enforced **no tenant
+isolation whatsoever** — it could not have failed, so it proved nothing. A second
+defect compounded it: the test fixture passed an entire connection string as
+`InitialCatalog`, so SQL Server created databases literally named
+`Server=localhost;Database=master;...`, and suites ran against empty
+freshly-migrated schemas instead of the real one. The security guarantee in
+`SECURITY_ARCHITECTURE.md` is only meaningful when the tests exercise a database
+that actually carries it; scattering near-identical copies makes "which schema
+did this test actually run against?" unanswerable. One canonical database makes
+the guarantee testable and the answer unambiguous.
+
+**Alternatives considered.**
+- *Keep one database per suite, but assert schema conformance in each.* Rejected:
+  it multiplies the drift surface by the number of suites, needs one schema
+  contract per suite, and still cannot prove a stale copy is the one under test.
+- *One canonical database plus a per-run ephemeral copy for every tier.* Rejected
+  for V1: it moves migration cost into every test run and reintroduces the
+  "which schema did this run against?" ambiguity that caused the defect.
+- *Transactions with rollback per test.* Rejected as the primary mechanism: it
+  cannot be combined with the applock-based serialisation the RLS tests need, and
+  it does not survive connection pooling across `sp_reset_connection`.
+- *Keep per-suite databases but fix the drift.* Rejected: the drift was not the
+  only failure. The fixture bug would have silently produced empty databases
+  under the per-suite model too.
+
+**Consequences.**
+
+- The canonical `Stockly` database is a **shared, stateful resource**. Phase 1
+  tests must not run two instances of the same suite concurrently without the
+  applock serialisation already implemented in `DatabaseLease`.
+- Test teardown is now **load-bearing for correctness**, not hygiene: a test that
+  leaks rows corrupts later tests. Leaked residue was observed (290 tenants,
+  276 hidden units) and removed.
+- Unscoped principals legitimately see **zero** rows from tenant-owned tables
+  because RLS and query filters are both active. A test that asserts row counts
+  must set a tenant scope (`sp_set_session_context`) or use `IgnoreQueryFilters()`
+  **deliberately**, and must never do so to evade an isolation assertion.
+- `Stockly.ConcurrencyTests` (3 tests) and `Stockly.MigrationTests` (4 tests)
+  are populated and pass against the canonical database; ISS-10 is resolved.
+- **No product-visible change.** This ADR changes no entity, permission code,
+  role grant, business rule, error code or API shape. The ratified counts of 66
+  entities, 105 permission codes, 11 tenant + 1 platform authority, 147 business
+  rules and 27 error codes are unaffected, and no prior ADR is superseded.
+
+**Affected components:** `tests/Stockly.StocklyDbTestSupport` (`SqlServerFixture`,
+`DatabaseLease`, `SqlPrincipalProvisioner`), `tests/Stockly.IntegrationTests`,
+`tests/Stockly.SecurityTests`, `.env.example`, `tools/Stockly.VerifyDatabase.sql`,
+`Stockly.slnx`. **Data migration impact:** none. **API compatibility impact:**
+none. **Regression tests:** `Stockly.SecurityTests.TenantIsolationTests` (20
+tests) and `Stockly.IntegrationTests` (33 tests in the current run) must both pass against the
+canonical database, and the test fixture must fail rather than fall back to a
+default database.
 
 ---
 

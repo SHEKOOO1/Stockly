@@ -88,44 +88,84 @@ A phase is **not** complete because the project builds.
 
 ## 9. Local development environment notes
 
-The current workstation (as of Phase 0) has:
+The current workstation (verified 2026-10-03) has:
 
 | Tool | Status |
 |---|---|
 | .NET SDK | `10.0.201` available |
 | Node.js | `v24.14.0` available |
 | Git | `2.53.0.windows.1` available |
+| SQL Server | **`localhost\SQLEXPRESS` available** (Windows/integrated authentication) |
 | Docker | **NOT available on this workstation** |
 
-Consequence: any test that requires a real SQL Server instance (integration,
-concurrency, migration and database-integrity tests) cannot be executed here
-until Docker or a local SQL Server is installed. This limitation is tracked in
-`docs/DEVELOPMENT_STATUS.md` and `docs/TESTING_STRATEGY.md`. Do not claim such
-tests passed on this machine.
+Consequence: DB-backed tests **can** be executed here — integration, security and
+database-integrity tiers run against the local instance and pass. Two
+requirements apply:
+
+- Set `STOCKLY_TEST_SQLSERVER=Server=localhost\SQLEXPRESS;Integrated Security=true;TrustServerCertificate=true`
+  before running them. The fixture must fail rather than fall back to a default.
+- `sqlcmd` needs `-C` (self-signed certificate) and `-S localhost\SQLEXPRESS -E`.
+
+**Docker-based validation still cannot be run or claimed here.** Local
+Docker/Nginx reference scaffolding and a CI workflow now exist, but no container
+image or Compose stack has been built or run on this workstation. The formerly
+empty `Stockly.ConcurrencyTests` and `Stockly.MigrationTests` tiers now contain
+real tests; a green solution run covers them (ISS-10 resolved).
 
 ---
 
-## 10. Current state (verified 2026-09-27)
+## 10. Current state (verified 2026-11-23)
 
 | Field | Value |
 |---|---|
-| Phase | **Phase 0 — Blueprint v1.0, final draft** |
-| Blueprint status | `STOCKLY BLUEPRINT v1.0 — BLOCKED BY OWNER DECISIONS` |
-| Code / migrations / tests | **None.** Do not create any while the gate is closed |
+| Phase | **Phase 1 — IN PROGRESS, not complete.** Persistence foundation, tenant-isolation enforcement, DB-backed tests, a startable API host and local/CI reference infrastructure are implemented; ISS-09, ISS-10 and ISS-11 are resolved |
+| Blueprint status | `STOCKLY BLUEPRINT v1.1 — RATIFIED` (2026-09-30) |
+| Code / migrations / tests / frontend / CI | Domain + Application + Infrastructure + API skeletons and 2 migrations (`InitialSchema`, `TenantIsolation`, both applied) exist and build clean · **433 tests** (322 unit, 51 architecture, 33 integration, 20 security, 3 concurrency, 4 migration) all passing · API serves `/health/live`, `/health/ready`, `/api-docs/openapi.json` · local Dockerfile/Compose/Nginx scaffold and CI workflow exist but are **not Docker-validated** · **no frontend, no business endpoints** |
 | Entities / permissions / roles | 66 across 12 schemas · 105 codes in 13 namespaces · 11 tenant + 1 platform authority |
-| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · **44** (all `Proposed`) · 8 |
-| Open owner decisions | **20** (of the 25 items in `PROJECT_BLUEPRINT.md` §23.1; 4 design + 1 assumption are disposed) |
-| Git | Commits `9121044` (baseline) and `949a873` (finalization checkpoint), plus an **empty nested repo** at `H:\Stockly\Stockly` (ISS-04) — do not touch |
+| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · **50 ratified `Accepted`** + ADR-0051 *reserved but never written* (ISS-08) + ADR-0052 `Proposed` · 8 |
+| Tracked decision items | **26** — 5 decided (TBD-19, 21, 22, 24, 25) · 16 unresolved · 4 design dispositions · 1 safe assumption |
+| Ratification 2026-09-30 | Blueprint v1.1 ratified in full · ADR-0001 → ADR-0044 promoted `Proposed` → `Accepted` (ADR-0045 → ADR-0050 were already `Accepted`) · SEC-KNW-01 → SEC-KNW-09 acknowledged as known V1 limitations |
+| Owner decisions taken 2026-09-30 | TBD-19 locations → **ADR-0045** · TBD-21 currency → **ADR-0046** · TBD-22 transfers → **ADR-0047** · TBD-24 legal entities → **ADR-0048** · TBD-25 scale target → **ADR-0049** |
+| New open item | **TBD-26** stock reservations — split out of TBD-10, deferred, V2 candidate (**ADR-0050**) |
+| Database | One canonical `Stockly` on `localhost\SQLEXPRESS`, at head migration (**ADR-0052**). All DB-backed tiers target it |
+| Git | Commits `9121044` (baseline), `949a873` (finalization checkpoint), `67b26e6`, `fe2eb7a`; everything since — the v1.1 correction, the ratification, **and all Phase 1 code** — is **uncommitted working-tree changes** (nothing committed without being asked); plus an **empty nested repo** at `H:\Stockly\Stockly`, **ignored by owner decision (ISS-04 — resolved)** — still on disk, never tracked |
 
 Consequences for an agent working here right now:
 
 - **The design work is finished.** The documented final counts are listed in
   `docs/DEVELOPMENT_STATUS.md` §5. If you change any of them, change the count in
   the same commit, in every document that repeats it, and add a `CHANGELOG.md`
-  entry. A stale count is a defect, not a cosmetic issue.
-- **Do not start Phase 1** — not a scaffold, not a `DbContext`, not a test, not
-  a CI file. The gate is owner ratification (§27 of the blueprint).
-- **Do not promote ADRs from `Proposed`** on your own authority.
-- **Do not delete, ignore, merge, or commit around `H:\Stockly\Stockly`.** It is
-  an owner decision (ISS-04), and Git commands inside it fail because the
-  repository has no commits.
+  entry. A stale count is a defect, not a cosmetic issue. Note that the ratified
+  ADR count is 50, not 44: §27 of the blueprint requires a decision record for
+  every decision, and six were recorded on 2026-09-30.
+- **Phase 1 is partly implemented and NOT complete.** Do not claim it is done.
+- **`ADR-0051` is reserved and must not be reused.** Seven code sites already
+  cite it for the tenant-isolation decision (RLS, TenantScope `CHECK`s,
+  `SESSION_CONTEXT`), which is implemented and applied but **was never written
+  as an ADR or documented** in `DATABASE_DESIGN.md` / `SECURITY_ARCHITECTURE.md`.
+  Authoring it is an **owner action** (`DEVELOPMENT_STATUS.md` ISS-08).
+- **ADR-0052** (one canonical database for dev and all test tiers) was added
+  2026-10-03 as **`Proposed`**. Ratification is an owner action.
+- **Do not create new ADRs without a new owner decision** — ADR-0001 – ADR-0050
+  are the ratified set.
+- **Ratification resolved no TBD.** All 16 stay `TBD`. Do not treat ratification
+  as an answer to any of them. `TBD-26` in particular has no answer: hard vs
+  soft reservations, release timing and lifecycle are all undecided, and
+  `ReservedQuantity` being `0` in V1 must not be read as a soft-reservation
+  design.
+- **Known open defects, all recorded in `docs/DEVELOPMENT_STATUS.md` §12:**
+  ISS-08 (ADR-0051 never written) and ISS-12 (ADR-0052 remains unratified).
+  ISS-09 (API startup), ISS-10 (concurrency/migration tiers) and ISS-11
+  (`dotnet ef` startup project) are resolved.
+- **Do not delete or commit `H:\Stockly\Stockly`.** ISS-04 is **RESOLVED**: the
+  owner decided to ignore the empty nested repository through `.gitignore`
+  (commit `fe2eb7a`). It remains on disk, untracked and empty — nothing was
+  deleted and nothing was ever committed. Do not add it to the project, commit
+  it, or remove it without a new owner decision. Git commands inside it still
+  fail because the repository has no commits.
+- **These documents are UTF-8 and contain Arabic text and typographic
+  characters.** Use the `edit` tool for every write. Do not use PowerShell
+  `Get-Content -Raw | Set-Content -Encoding UTF8` on them: on Windows PowerShell
+  5.1 that round-trip destroys the encoding and silently corrupts the Arabic
+  product name and the box-drawing characters. After any write, verify the file
+  is non-empty and contains no `U+FFFD` replacement character.

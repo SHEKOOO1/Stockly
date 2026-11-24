@@ -3,13 +3,20 @@
 | Field | Value |
 |---|---|
 | Document | `WORKFLOWS.md` |
-| Version | 1.0.0 |
-| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.0 |
-| Last updated | 2026-09-27 |
+| Version | 1.1.0 |
+| Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
+| Last updated | 2026-09-30 |
 | Related | `BUSINESS_RULES.md`, `API_CONVENTIONS.md`, `ROLES_PERMISSIONS.md` |
 
 Each workflow lists: actor, preconditions, permission, steps (API), invariants,
 audit actions, and failure handling.
+
+**Decisions that constrain every workflow below** (all 2026-09-30): one `Tenant`
+is one legal entity and no workflow crosses tenants (ADR-0048); `WarehouseId` is
+the finest stock scope and no workflow accepts a location/bin (ADR-0045); all
+money is in the tenant's single currency with no conversion step (ADR-0046);
+transfers are instantaneous and single-transaction (ADR-0047); planning never
+reserves stock (ADR-0050).
 
 ---
 
@@ -268,10 +275,30 @@ Server, in ONE transaction:
 
 **Invariants:** either both warehouses move or neither does; the document's
 `CounterWarehouseId` is required when `MovementType = TRANSFER` and forbidden
-otherwise; balances are never set directly, only guarded.
+otherwise; balances are never set directly, only guarded; both warehouses belong
+to the **same tenant**, so a cross-tenant transfer is unrepresentable.
 
-**In-transit modelling is §23 TBD-22 (owner decision).** V1 assumes an
-instantaneous transfer; a virtual in-transit warehouse is V2.
+**In-transit modelling is DECIDED (TBD-22 / ADR-0047, 2026-09-30).** A V1
+transfer is **instantaneous**. There is no in-transit warehouse, no
+`in_transit` movement type, no `Received`/`InTransit` document status and no
+partial-transfer or two-step-confirmation path. Step 1 locks the two balance
+rows in one transaction, so **there is no commit point at which the quantity
+exists in neither warehouse** — which is precisely why the in-transit model was
+rejected: it would have required a persistent intermediate state, a reconciliation
+job, and a second warehouse whose stock no membership is assigned to. A virtual
+in-transit warehouse is **V2** scope, not a V1.1 addition, and adopting it later
+is additive (a new `Warehouse.Type` value plus a new status), not a redesign.
+
+**Audit is not reduced by instantaneous posting.** Both legs carry the same
+`PostedByMembershipId`, `DeviceId`, `SessionId` and `CorrelationId`, and both are
+written to `audit.AuditLog` in the same transaction as the ledger rows. A transfer
+is therefore as traceable as any other movement; nothing about "instantaneous"
+licenses skipping the audit rows.
+
+**No location is involved.** The two `WarehouseId` values are whole warehouses —
+the finest stock scope in V1 and V1.1 (TBD-19 / ADR-0045). Selecting a source or
+target bin does not exist in V1 and MUST NOT be accepted as an unknown-but-ignored
+input: an unknown JSON property is `400` (BR-UNI-05).
 
 **Failures:** `409 insufficient_stock`, `409 document_not_postable`,
 `429 rate_limited`.
@@ -373,7 +400,7 @@ be the person posting (configurable, default on).
    POST /api/v1/events/{id}/shortage/calculate
         Permission: events.shortage.recalculate
         For each required product:
-            available = StockBalance.OnHand + StockBalance.Incoming (open POs)
+            available = StockBalance.OnHand + StockBalance.Reserved(0 in V1) + StockBalance.Incoming (open POs)
             shortage  = max(0, required - available)
             recommended = shortage (optionally rounded to pack size — TBD-10)
         Inserts an immutable EventShortageSnapshot
@@ -387,6 +414,19 @@ be the person posting (configurable, default on).
 **Invariants:** shortage is a snapshot, never live; recommendations never post
 inventory; generating a request requires the purchasing permission, not just the
 events permission.
+
+**Planning does not reserve stock (TBD-26 / ADR-0050).** This workflow produces
+a *recommendation*, not a claim on inventory. `ReservedQuantity` is `0` in V1 and
+this flow MUST NOT write it, and no endpoint in it may present a shortage as
+"already set aside". Stock reservation semantics — hard (blocking) vs soft
+(advisory), when a reservation is released, and its lifecycle — are an **open
+owner decision under TBD-26**, classified as a V2 candidate. Hard-vs-soft MUST
+NOT be assumed by any part of the planning implementation.
+
+**Two separate open items touch this workflow, and they are not the same one.**
+TBD-10 (Phase 6 gate) covers the recipe serving/yield basis and the pack-size
+rounding shown above. TBD-26 covers reservations and belongs to no phase. A
+reader of this section must not merge them.
 
 ---
 
@@ -453,6 +493,18 @@ Security-category notifications bypass user muting.
 4. Audit: report.exported with filters and row count
 ```
 
+**Export caps are sized against the confirmed V1 engineering target** (TBD-25 /
+ADR-0049: ~50 warehouses, ~100 k products, ~10 M ledger rows per tenant). A
+request that would exceed the row cap or the time-window cap is **rejected with a
+validation error naming both limits** — it is never silently truncated, because a
+silently truncated financial report is worse than a refused one. This target is
+**not** a subscription or commercial limit: no report cap here is derived from a
+`PlanFeature` row, and the values live in configuration, not in code.
+
+**Currency.** Every cost and value column in a report is in the tenant's single
+currency (TBD-21 / ADR-0046). There is no conversion and no FX column in any
+export, and a report MUST NOT present two currencies for comparison.
+
 ---
 
 ## 15. Platform administration
@@ -479,6 +531,23 @@ Usage evaluator (scheduled):
 cannot perform tenant operations with the platform token; they sign in on the
 tenant path. `IsPlatformAdmin` is the only way to set another user's
 `IsPlatformAdmin`, and it is audited (SEC-KNW-09).
+
+**A created tenant is one legal/business entity (TBD-24 / ADR-0048).** Tenant
+creation captures a single `LegalName`; there is no entity type, parent tenant,
+consolidation group or entity tree to configure, and no API accepts one. An
+operator that needs two legal entities creates two tenants, which also means two
+separate subscription and usage records — this is a consequence of the decision,
+not an oversight. The absence of a legal-entity dimension is also a security
+property: because `TenantId` is the only organizational key in the schema, the
+authorization chain in `SECURITY_ARCHITECTURE.md` §3 has no intermediate scope to
+check and cannot be bypassed by omitting a level.
+
+**The `flag tenants over limit` step measures subscription usage, not the V1
+engineering target.** The ~50 warehouse / ~100 k product / ~10 M ledger row
+figures from ADR-0049 size indexes, query design, pagination and performance
+tests. They are **not** commercial limits, are not enforced on tenants, and MUST
+NOT be implemented as `SubscriptionUsage` quotas. `SubscriptionUsage` tracks only
+the counts the plan's `PlanFeature` rows actually define.
 
 ---
 

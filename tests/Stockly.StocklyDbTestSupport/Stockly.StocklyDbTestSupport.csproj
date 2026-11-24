@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Shared support library for the four database-dependent suites (integration,
+    security, concurrency, migration).
+
+    It exists as a separate project, referenced by all four, for one reason: the
+    fixture must have exactly ONE implementation. Four copies of a fixture would
+    drift, and a drifted fixture is how a suite quietly stops testing isolation.
+
+    This project contains NO tests. It is referenced, not run.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- Warnings are errors, as in every other project. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!--
+      This project is referenced, never run. Without this, `dotnet test Stockly.slnx`
+      launches a test host for it, finds no tests, and then aborts on an unresolved
+      transitive package in its deps.json, which fails the whole solution run and so
+      reports a broken build for a project that is working exactly as intended.
+    -->
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Stockly.Infrastructure\Stockly.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Stockly.Domain\Stockly.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
