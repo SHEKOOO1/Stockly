@@ -3,9 +3,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Stockly.Api.Common;
 using Stockly.Api.Configuration;
+using Stockly.Api.Outbox;
 using Stockly.Api.Tenancy;
 using Stockly.Application.Auditing;
 using Stockly.Application.Common.Errors;
+using Stockly.Infrastructure.Outbox;
 using Stockly.Infrastructure.Persistence;
 using Stockly.Infrastructure.Persistence.Security;
 
@@ -65,6 +67,8 @@ builder.Services.AddDbContext<StocklyDbContext>((sp, options) =>
 // rolls back with the business change (PROJECT_BLUEPRINT §16 rule 6).
 builder.Services.AddScoped<IAuditCollector, AuditCollector>();
 
+builder.Services.AddOutbox(builder.Configuration);
+
 // ADR-0034 route scope. The decision itself lives in RouteScopeResolver; this
 // handler is only the bridge from an ASP.NET authorization context to it.
 builder.Services.AddSingleton<IAuthorizationHandler, ScopeRequirementHandler>();
@@ -101,7 +105,11 @@ app.UseAuthorization();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 
-app.MapGet("/health/ready", async (StocklyDbContext db, CancellationToken cancellationToken) =>
+app.MapGet("/health/ready", async (
+    StocklyDbContext db,
+    OutboxMonitor monitor,
+    OutboxOptions outboxOptions,
+    CancellationToken cancellationToken) =>
 {
     if (!await db.Database.CanConnectAsync(cancellationToken))
     {
@@ -123,7 +131,25 @@ app.MapGet("/health/ready", async (StocklyDbContext db, CancellationToken cancel
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
 
-    return Results.Ok(new { status = "ready", database = "ok", migrations = "current" });
+    var outbox = await monitor.ReadAsync(cancellationToken);
+    var outboxStatus = outbox.Describe(outboxOptions);
+
+    if (outboxStatus != "ok")
+    {
+        return Results.Json(
+            new
+            {
+                status = "unavailable",
+                database = "ok",
+                migrations = "current",
+                outbox = outboxStatus,
+                stale = outbox.Stale,
+                deadLetter = outbox.DeadLetter,
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    return Results.Ok(new { status = "ready", database = "ok", migrations = "current", outbox = "ok" });
 });
 
 app.MapOpenApi("/api-docs/{documentName}.json");

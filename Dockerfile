@@ -1,8 +1,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
-COPY Directory.Build.props Stockly.slnx ./
+COPY Directory.Build.props ./
 COPY src ./src
-RUN dotnet restore Stockly.slnx
+RUN dotnet restore src/Stockly.Api/Stockly.Api.csproj
 RUN dotnet publish src/Stockly.Api/Stockly.Api.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

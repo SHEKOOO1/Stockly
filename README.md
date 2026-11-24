@@ -10,26 +10,28 @@ enforced independently from roles.
 
 > **Current state: blueprint v1.1 RATIFIED. Phase 1 is in progress, not
 > complete.** The repository contains the Domain, Application, Infrastructure
-> and API projects, two SQL Server migrations, six active test projects, local
-> Docker/Nginx reference scaffolding and a CI workflow. **No frontend and no
-> business API endpoints exist yet.** Docker validation has not been performed.
+> and API projects, two SQL Server migrations, six active test projects, an early
+> mocked/static frontend skeleton in `client/`, local Docker/Nginx reference
+> scaffolding and a CI workflow. **No business API endpoints exist yet**, and the
+> frontend is not the Phase 8 production PWA. Docker validation has not been
+> performed.
 >
-> Verification on 2026-11-23: clean format, clean `-warnaserror` build, clean EF
-> model-drift check and **433 tests passing** against a real local SQL Server
-> (322 unit, 51 architecture, 33 integration, 20 security, 3 concurrency,
+> Verification on 2026-11-24: clean format, clean `-warnaserror` build, clean EF
+> model-drift check and **440 tests passing** against a real local SQL Server
+> (322 unit, 51 architecture, 40 integration, 20 security, 3 concurrency,
 > 4 migration).
 >
 > On 2026-09-30 the owner (1) decided the five questions that were blocking the
 > Phase 1 foundations — locations, currency, transfers, legal entities, scale
 > target; (2) **ratified the blueprint in full**, promoting ADR-0001 – ADR-0044
-> to `Accepted` so that all 50 ADRs are `Accepted`; and (3) acknowledged
-> SEC-KNW-01 – SEC-KNW-09 as known, accepted V1 limitations — they remain
-> registered, not remediated.
+> to `Accepted`; and (3) acknowledged SEC-KNW-01 – SEC-KNW-09 as known, accepted
+> V1 limitations — they remain registered, not remediated. On 2026-11-24 the
+> owner also ratified ADR-0051 and ADR-0052, so all 52 written ADRs are
+> `Accepted`.
 >
-> Sixteen questions remain open and ratification **did not resolve any of them**:
-> each is still gated to a later phase or explicitly deferred. ISS-08 (ADR-0051
-> never authored) and ISS-12 (ADR-0052 unratified) remain owner actions. See
-> `docs/PROJECT_BLUEPRINT.md` §23.1 and §27.
+> Sixteen questions remain open and neither ratification **resolved any of them**:
+> each is still gated to a later phase or explicitly deferred. ISS-08 and ISS-12
+> are closed. See `docs/PROJECT_BLUEPRINT.md` §23.1 and §27.
 
 ---
 
@@ -52,6 +54,7 @@ Stockly/
 ├── tests/                       # Unit, architecture, integration, security,
 │                                # concurrency, migration and DB fixture projects
 ├── tools/                       # Database conformance gate
+├── client/                      # Mocked/static React + TypeScript frontend skeleton
 └── docs/                        # THE PERSISTENT PROJECT MEMORY OF STOCKLY
     ├── PROJECT_BLUEPRINT.md     # Master specification
     ├── ARCHITECTURE.md          # Solution / module / deployment architecture
@@ -64,10 +67,11 @@ Stockly/
     ├── BACKEND_API_CONTRACT_GAPS.md # Implemented-versus-documented API surface
     ├── TESTING_STRATEGY.md      # Test pyramid, security tests, CI gates
     ├── DEVELOPMENT_STATUS.md    # CURRENT STATE (read this first)
-    ├── DECISIONS.md             # Architecture decision records (ADR-0001–ADR-0050)
+    ├── DECISIONS.md             # Architecture decision records (ADR-0001–ADR-0052)
     ├── IMPLEMENTATION_AUDIT.md  # Source-of-truth implementation audit
     ├── IMPLEMENTATION_STATUS.md # Current implementation handoff
     ├── INITIAL_SKELETON.md      # What actually exists in the skeleton
+    ├── INITIAL_FRONTEND_IMPLEMENTATION.md # Mocked/static frontend status
     ├── NEXT_DEVELOPMENT_STEPS.md # Phase-aligned next work
     └── CHANGELOG.md             # Meaningful change history
 ```

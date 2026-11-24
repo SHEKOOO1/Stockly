@@ -5,7 +5,7 @@
 | Document | `DATABASE_DESIGN.md` |
 | Version | 1.1.0 |
 | Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; **no open schema question blocks Phase 1** (TBD-19, 21, 22, 24, 25 decided 2026-09-30) |
-| Last updated | 2026-09-30 |
+| Last updated | 2026-11-24 (ADR-0051 enforcement section added; no schema change) |
 | Engine | SQL Server 2022 |
 | ORM | Entity Framework Core |
 | Entities | 66 (V1) — unchanged by the 2026-09-30 owner decisions; see §4 |
@@ -1306,6 +1306,41 @@ UX: `(CustomFieldDefinitionId, EntityName, EntityId)`.
 
 This is defence in depth: the API enforces it, the audit log records it, and a
 test suite attempts escalation through every path.
+
+### 6.1 Database-enforced tenant isolation (ADR-0051)
+
+`TenantIsolation` is an applied migration, not an optional hardening step. It
+creates the `security` schema, the `stockly_platform_role` database role and two
+predicate functions:
+
+- `security.fnStocklyRowTenantAllowed(@TenantId)` gates `INSERT` and
+  `TenantId` reassignment through a `CK_<Table>_TenantScope` `CHECK` on every
+  tenant-scoped table. Tenant scope requires a matching non-null
+  `StocklyTenantId` in `SESSION_CONTEXT`; platform scope requires membership of
+  `stockly_platform_role`.
+- `security.fnStocklyTenantVisible(@TenantId)` is the inline, schema-bound
+  table-valued predicate behind the single `security.spStocklyTenantPolicy`
+  `FILTER PREDICATE` covering every table with a `TenantId` column.
+
+The migration discovers tenant-scoped tables from `sys.tables` and asserts the
+ratified set: **60 tenant-scoped tables, 60 RLS filter predicates and 60 tenant
+ownership `CHECK` constraints**. A new tenant-scoped table without either guard
+fails deployment. The six tables without `TenantId` are deliberately global:
+`identity.LoginAttempt`, `identity.Permission`, `identity.Tenant`,
+`platform.AppUser`, `platform.Plan` and `platform.PlanFeature`.
+
+Scope is transmitted per physical connection by
+`TenantScopeConnectionInterceptor` using `sp_set_session_context` with
+`StocklyScope` (`1` tenant, `2` platform) and `StocklyTenantId`. Platform
+authority is role membership, so setting `StocklyScope = 2` alone grants
+nothing. Nullable-`TenantId` tables (`audit.AuditLog`, `ops.OutboxMessage`,
+`identity.AuthSession`) can be written with a null tenant only in platform scope;
+the outbox monitor and dispatcher principals are therefore separate, explicit
+members of `stockly_platform_role`.
+
+EF global query filters, composite `(Id, TenantId)` keys and every unique index
+leading with `TenantId` remain additional layers. None of them is an alternative
+to the database predicates (ADR-0051).
 
 ---
 

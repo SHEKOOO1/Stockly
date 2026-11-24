@@ -5,17 +5,23 @@
 | Document | `PROJECT_BLUEPRINT.md` |
 | Status | **STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1** |
 | Version | 1.1.0 |
-| Last updated | 2026-09-30 |
+| Last updated | 2026-11-24 (ratification note only; blueprint v1.1 design unchanged) |
 | Ratified | 2026-09-30 — by the product owner, in full (ADR-0001 – ADR-0050) |
 | Phase | 1 — Foundation + Architecture + Database + Security Core (**ready to begin**; not started) |
 | Authority | This document is the master specification. `DATABASE_DESIGN.md`, `ARCHITECTURE.md`, `SECURITY_ARCHITECTURE.md`, `ROLES_PERMISSIONS.md`, `BUSINESS_RULES.md`, `WORKFLOWS.md`, `API_CONVENTIONS.md` and `TESTING_STRATEGY.md` are its detailed expansions. If they conflict, the conflict must be raised and resolved here, not silently in a sub-document. |
 
 **This blueprint is ratified.** The design work is complete: 66 entities,
-105 permissions, 50 architecture decision records, 147 business rules and
+105 permissions, 52 ratified architecture decision records (50 at the
+2026-09-30 blueprint ratification), 147 business rules and
 8 delivery phases are specified and internally consistent. The product owner
 ratified the whole of v1.1 on **2026-09-30**: ADR-0001 – ADR-0050 are all
 `Accepted` (`DECISIONS.md`), and SEC-KNW-01 – SEC-KNW-09 are explicitly
 acknowledged as accepted V1 limitations (`SECURITY_ARCHITECTURE.md` §15).
+Two later engineering decisions were ratified on **2026-11-24**: **ADR-0051**
+(database-enforced tenant isolation) and **ADR-0052** (one canonical `Stockly`
+database). They are in force but are not part of the 2026-09-30 blueprint
+ratification and did not resolve any `TBD`. The current ratified ADR count is
+**52** (`DECISIONS.md`).
 
 **Five owner decisions were taken on 2026-09-30 and are in force**
 (`DECISIONS.md` ADR-0045 – ADR-0050): warehouse locations (TBD-19),
@@ -49,7 +55,8 @@ Conventions used throughout:
 - `ADR-xxxx` — a decision record in `DECISIONS.md`. ADR-0001 – ADR-0050 are all
   `Accepted` as of the 2026-09-30 ratification (§27): ADR-0045 – ADR-0050 record
   explicit owner decisions, and ADR-0001 – ADR-0044 were promoted from `Proposed`
-  by that ratification. A future ADR may still be created `Proposed` and take
+  by that ratification. ADR-0051 – ADR-0052 were ratified on 2026-11-24, so all
+  52 written ADRs are `Accepted`. A future ADR may still be created `Proposed` and take
   effect on its own approval.
 - `V1` / `V1.1` / `V2` / `V3` — release scope tiers (see §24).
 
@@ -1368,6 +1375,12 @@ Ratification was recorded by promoting ADR-0001 – ADR-0044 from `Proposed` to
 create, merge, split, renumber or rewrite any ADR, and it did **not** resolve any
 `TBD`. The status is now
 **STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1**.
+
+**Later ratification (2026-11-24).** ADR-0051 was authored to record the already
+implemented tenant-isolation design, and ADR-0052 was ratified. Both are
+`Accepted`; the ratified ADR count is now **52**. Neither decision changes this
+blueprint's entity, permission, role, rule, error-code or phase counts, and
+neither resolves an open `TBD`.
 
 | Role | Name | Date | Status |
 |---|---|---|---|

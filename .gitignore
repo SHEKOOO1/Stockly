@@ -72,14 +72,13 @@ stats.html
 *.tsbuildinfo
 
 # ---- Service worker / PWA generated assets --------------------------------
-# Only build output. A hand-written `manifest.webmanifest` IS meant to be
-# committed; if that pattern ever becomes a problem, scope it to the build
-# output directory rather than the repository root.
+# Only build output. The hand-written client PWA manifest is committed.
 dev-dist/
 sw.js
 sw.js.map
 workbox-*.js
 manifest.webmanifest
+!client/public/manifest.webmanifest
 
 # ---- Database --------------------------------------------------------------
 *.mdf

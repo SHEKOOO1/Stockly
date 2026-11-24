@@ -114,15 +114,15 @@ real tests; a green solution run covers them (ISS-10 resolved).
 
 ---
 
-## 10. Current state (verified 2026-11-23)
+## 10. Current state (verified 2026-11-24)
 
 | Field | Value |
 |---|---|
-| Phase | **Phase 1 — IN PROGRESS, not complete.** Persistence foundation, tenant-isolation enforcement, DB-backed tests, a startable API host and local/CI reference infrastructure are implemented; ISS-09, ISS-10 and ISS-11 are resolved |
+| Phase | **Phase 1 — IN PROGRESS, not complete.** Persistence foundation, tenant-isolation enforcement, DB-backed tests, a startable API host, outbox readiness/dispatcher foundation and local/CI reference infrastructure are implemented; ISS-08 – ISS-12 are resolved |
 | Blueprint status | `STOCKLY BLUEPRINT v1.1 — RATIFIED` (2026-09-30) |
-| Code / migrations / tests / frontend / CI | Domain + Application + Infrastructure + API skeletons and 2 migrations (`InitialSchema`, `TenantIsolation`, both applied) exist and build clean · **433 tests** (322 unit, 51 architecture, 33 integration, 20 security, 3 concurrency, 4 migration) all passing · API serves `/health/live`, `/health/ready`, `/api-docs/openapi.json` · local Dockerfile/Compose/Nginx scaffold and CI workflow exist but are **not Docker-validated** · **no frontend, no business endpoints** |
+| Code / migrations / tests / frontend / CI | Domain + Application + Infrastructure + API skeletons and 2 migrations (`InitialSchema`, `TenantIsolation`, both applied) exist and build clean · **440 tests** (322 unit, 51 architecture, 40 integration, 20 security, 3 concurrency, 4 migration) all passing · API serves `/health/live`, `/health/ready` (outbox-aware), `/api-docs/openapi.json` · local Dockerfile/Compose/Nginx scaffold and CI workflow exist but are **not Docker-validated** · `client/` contains an early mocked/static Arabic RTL frontend with 34 routes, local interactions and no API/auth/persistence · **no business endpoints, no concrete outbox handlers** |
 | Entities / permissions / roles | 66 across 12 schemas · 105 codes in 13 namespaces · 11 tenant + 1 platform authority |
-| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · **50 ratified `Accepted`** + ADR-0051 *reserved but never written* (ISS-08) + ADR-0052 `Proposed` · 8 |
+| Rules / error codes / ADRs / phases | 147 · 27 (26 emitted + reserved) · **52 ratified `Accepted`** (ADR-0001 – ADR-0052) · 8 |
 | Tracked decision items | **26** — 5 decided (TBD-19, 21, 22, 24, 25) · 16 unresolved · 4 design dispositions · 1 safe assumption |
 | Ratification 2026-09-30 | Blueprint v1.1 ratified in full · ADR-0001 → ADR-0044 promoted `Proposed` → `Accepted` (ADR-0045 → ADR-0050 were already `Accepted`) · SEC-KNW-01 → SEC-KNW-09 acknowledged as known V1 limitations |
 | Owner decisions taken 2026-09-30 | TBD-19 locations → **ADR-0045** · TBD-21 currency → **ADR-0046** · TBD-22 transfers → **ADR-0047** · TBD-24 legal entities → **ADR-0048** · TBD-25 scale target → **ADR-0049** |
@@ -136,17 +136,20 @@ Consequences for an agent working here right now:
   `docs/DEVELOPMENT_STATUS.md` §5. If you change any of them, change the count in
   the same commit, in every document that repeats it, and add a `CHANGELOG.md`
   entry. A stale count is a defect, not a cosmetic issue. Note that the ratified
-  ADR count is 50, not 44: §27 of the blueprint requires a decision record for
-  every decision, and six were recorded on 2026-09-30.
+  ADR count is 52, not 44: §27 of the blueprint requires a decision record for
+  every decision, and ADR-0051/ADR-0052 were ratified on 2026-11-24.
 - **Phase 1 is partly implemented and NOT complete.** Do not claim it is done.
-- **`ADR-0051` is reserved and must not be reused.** Seven code sites already
-  cite it for the tenant-isolation decision (RLS, TenantScope `CHECK`s,
-  `SESSION_CONTEXT`), which is implemented and applied but **was never written
-  as an ADR or documented** in `DATABASE_DESIGN.md` / `SECURITY_ARCHITECTURE.md`.
-  Authoring it is an **owner action** (`DEVELOPMENT_STATUS.md` ISS-08).
-- **ADR-0052** (one canonical database for dev and all test tiers) was added
-  2026-10-03 as **`Proposed`**. Ratification is an owner action.
-- **Do not create new ADRs without a new owner decision** — ADR-0001 – ADR-0050
+- **The initial frontend is a mocked/static skeleton only.** `client/` is
+  implemented and locally verified, but it has no backend calls, auth, RBAC,
+  persistence, service worker or offline writes. Phase 8 production PWA remains
+  incomplete; see `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`.
+- **`ADR-0051` is now authored and `Accepted`.** It records the tenant-isolation
+  decision already cited by seven code sites (RLS, TenantScope `CHECK`s,
+  `SESSION_CONTEXT`) and is documented in `DATABASE_DESIGN.md` §6.1 and
+  `SECURITY_ARCHITECTURE.md` §2.1.
+- **ADR-0052** (one canonical database for dev and all test tiers) is now
+  `Accepted` (ratified 2026-11-24).
+- **Do not create new ADRs without a new owner decision** — ADR-0001 – ADR-0052
   are the ratified set.
 - **Ratification resolved no TBD.** All 16 stay `TBD`. Do not treat ratification
   as an answer to any of them. `TBD-26` in particular has no answer: hard vs
@@ -154,9 +157,10 @@ Consequences for an agent working here right now:
   `ReservedQuantity` being `0` in V1 must not be read as a soft-reservation
   design.
 - **Known open defects, all recorded in `docs/DEVELOPMENT_STATUS.md` §12:**
-  ISS-08 (ADR-0051 never written) and ISS-12 (ADR-0052 remains unratified).
-  ISS-09 (API startup), ISS-10 (concurrency/migration tiers) and ISS-11
-  (`dotnet ef` startup project) are resolved.
+  ISS-08 and ISS-12 are now resolved along with ISS-09 (API startup), ISS-10
+  (concurrency/migration tiers) and ISS-11 (`dotnet ef` startup project).
+  Remaining ISS-05 (licence), ISS-06 (hosting), ISS-02 (16 open TBDs) and
+  ISS-07 (TBD-26 reservations) are owner/phase-gated items.
 - **Do not delete or commit `H:\Stockly\Stockly`.** ISS-04 is **RESOLVED**: the
   owner decided to ignore the empty nested repository through `.gitignore`
   (commit `fe2eb7a`). It remains on disk, untracked and empty — nothing was

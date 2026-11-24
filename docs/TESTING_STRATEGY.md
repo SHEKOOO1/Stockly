@@ -311,12 +311,12 @@ dotnet ef migrations has-pending-model-changes `
   --startup-project src/Stockly.Infrastructure
 ```
 
-**Coverage reality check (2026-11-23).** Steps 1, 2, 3, 4, 5, 6, 7, 8 and 11
-have been executed locally and pass: 322 unit, 51 architecture, 33 integration,
-20 security, 3 concurrency and 4 migration — **433 in total** — plus clean
+**Coverage reality check (2026-11-24).** Steps 1, 2, 3, 4, 5, 6, 7, 8 and 11
+have been executed locally and pass: 322 unit, 51 architecture, 40 integration,
+20 security, 3 concurrency and 4 migration — **440 in total** — plus clean
 format, `-warnaserror` build, local tool restore and model-drift gates. DB-backed
-tiers ran against `localhost\SQLEXPRESS`, not a substitute provider. ISS-10 and
-ISS-11 are resolved. Step 9 coverage data is collected by the CI workflow but the
+tiers ran against `localhost\SQLEXPRESS`, not a substitute provider. ISS-08 –
+ISS-12 are resolved. Step 9 coverage data is collected by the CI workflow but the
 per-area thresholds in §6 are not yet enforced; step 10 (frontend), nightly steps
 12–15 and release steps 16–17 remain unimplemented/unrun. Docker validation is
 not claimed: Docker is unavailable on this workstation.

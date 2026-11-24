@@ -1,6 +1,6 @@
 # Implementation Audit — Stockly
 
-Audit date: 2026-11-23
+Audit date: 2026-11-23; frontend addendum: 2026-11-24
 
 ## 1. Scope and authority
 
@@ -14,7 +14,7 @@ The implemented foundation is **Phase 1 — Foundation + Architecture + Database
 - Phase 5: batches, expiry, FEFO, transfers, stocktake, barcode.
 - Phase 6: events and food.
 - Phase 7: reports, notifications, SaaS, search, customization.
-- Phase 8: frontend/PWA, shared terminal UI, hardening.
+- Phase 8: production frontend/PWA, shared terminal UI, hardening (the early mocked/static skeleton is not the production PWA).
 
 There is no approved document named “Level 1”; this report maps the requested initial skeleton to Phase 1 and records later-phase functionality as missing/deferred rather than pretending it is implemented.
 
@@ -88,17 +88,17 @@ includes concurrency and migration behaviour.
 
 ### 3.3 Tests — IMPLEMENTED FOR CURRENT PHASE BOUNDARY
 
-- 433 passing tests exist: 322 unit, 51 architecture, 33 integration, 20 security, 3 concurrency, 4 migration.
+- 440 passing tests exist: 322 unit, 51 architecture, 40 integration, 20 security, 3 concurrency, 4 migration.
 - All DB-backed tests run against the canonical local `Stockly` database with `STOCKLY_TEST_SQLSERVER` set.
 - API host tests verify startup, liveness, readiness, OpenAPI sanitisation, correlation ids, security headers and anonymous access to health endpoints.
 - Architecture tests assert the exception-handler fallback, forbidden early-phase features, layering and committed-secret scanning.
 - Concurrency tests assert stale-rowversion rejection, single-winner unique-key races and rollback; migration tests assert migration state, schema shape and tenant-isolation artifacts. ISS-10 is resolved.
 
-### 3.4 Frontend/PWA — MISSING
+### 3.4 Frontend/PWA — MOCKED STATIC SKELETON IMPLEMENTED
 
-- No `package.json`, frontend source, PWA manifest, service worker, icons, routing, CSS, HTML or client tests exist.
-- `.gitignore` and `.env.example` anticipate later Node/Vite/PWA and Docker work, but no implementation exists.
-- Frontend is Phase 8 in the ratified blueprint. It may eventually be built against mocked/partial APIs, but must not be represented as a working client until backend endpoints exist.
+- `client/` contains a React + TypeScript + Vite application with 34 built Arabic RTL routes, a three-context shell, local interactions, i18n, isolated demo data, a PWA manifest and 5 passing smoke tests.
+- There is no service worker, offline write, API client, DTO contract, auth/RBAC evaluation, persistence or shared-terminal flow. All mutations are local preview state.
+- Frontend production/PWA delivery remains Phase 8. The skeleton is an authorised early preview under `PROJECT_BLUEPRINT.md` §25.2 and must not be represented as a data-connected client; see `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`.
 
 ### 3.5 Deployment/CI — LOCAL REFERENCE SCAFFOLD EXISTS
 
@@ -115,7 +115,7 @@ includes concurrency and migration behaviour.
 | Database schema and migrations | IMPLEMENTED | 2 migrations, 12 schemas, 66 tables; local DB is at head. |
 | Tenant isolation / RLS | IMPLEMENTED | Query filters, composite keys, checks, RLS and `SESSION_CONTEXT` interception exist and are security-tested. |
 | Cross-cutting API middleware | IMPLEMENTED | Correlation, headers, controlled ProblemDetails and exception handler operate in a startable host. |
-| API host endpoints / OpenAPI | PARTIALLY IMPLEMENTED | Liveness, basic readiness and sanitised OpenAPI are mapped; no `/api/v1` business routes and readiness lacks outbox backlog. |
+| API host endpoints / OpenAPI | PARTIALLY IMPLEMENTED | Liveness, outbox-aware readiness and sanitised OpenAPI are mapped; no `/api/v1` business routes and no business producer populates real outbox events. |
 | Platform/SaaS | BACKEND ONLY | `Plan`, `Subscription`, `TenantEntitlement`, `SubscriptionUsage`, `AppUser` tables exist; no platform API or UI. |
 | Identity and session model | BACKEND ONLY | Auth/session/PIN tables exist; no login, refresh, PIN verification or session middleware. Phase 2/4. |
 | RBAC model | BACKEND ONLY | 105 permission codes, roles and warehouse assignments are designed in docs; schema exists; no seeding or evaluator implementation. Phase 2. Architecture tests forbid adding them now. |
@@ -127,9 +127,9 @@ includes concurrency and migration behaviour.
 | Food/recipes | BACKEND ONLY | Meal type, recipe, items and cost snapshots exist; no API or UI. Phase 6. |
 | Reports/notifications | BACKEND ONLY | Tables exist; no API, reporting engine, notification delivery or UI. Phase 7. |
 | Audit | PARTIALLY IMPLEMENTED | `AuditLog` table, mapper and collector exist; no call site drains the collector into the business transaction. |
-| Frontend/PWA/shared terminal | MISSING | No client code. Phase 8. |
+| Frontend/PWA/shared terminal | MOCKED STATIC SKELETON | 34 local RTL routes exist in `client/`; production PWA, auth, persistence and shared terminal remain Phase 8. |
 | Docker/Nginx/CI | REFERENCE SCAFFOLD | Local files and workflow exist; no Docker/CI execution or production target decision. Phase 8 hardening remains. |
-| ADR-0051 documentation | NEEDS REVIEW | Reserved ADR is cited by seven code sites but was never authored; owner action. |
+| ADR-0051 documentation | RATIFIED 2026-11-24 | ADR authored and `Accepted`; §6.1 of `DATABASE_DESIGN.md` and §2.1 of `SECURITY_ARCHITECTURE.md` added. ISS-08 closed. |
 | Migration/concurrency coverage | IMPLEMENTED | 4 migration and 3 concurrency tests pass against real SQL Server; ISS-10 resolved. |
 | Backend API contract implementation | DOCUMENTED GAP | `docs/BACKEND_API_CONTRACT_GAPS.md` records the absent `/api/v1` surface, DTOs and route conflicts. |
 
@@ -148,7 +148,7 @@ The implemented security posture is strong at the persistence and claim-resoluti
 7. There is no authorization policy attached to any route and no permission evaluator.
 8. There is no rate limiting or lockout implementation.
 9. There is no audit write path from use cases.
-10. Health readiness does not inspect the outbox backlog.
+10. Health readiness now inspects the outbox backlog through a read-only platform principal and fails closed; the dispatcher foundation exists but no concrete handler is registered.
 11. Local Docker/Nginx configuration keeps SQL Server and the API internal and
     injects secrets, but it has not been exercised; no container-level security
     claim is made.
@@ -170,8 +170,7 @@ Only Phase 1-safe work was implemented:
 
 ## 7. Explicit non-goals for this audit
 
-- No ADR-0051 was authored; it remains reserved and owner-only.
-- ADR-0052 remains proposed and was not ratified here.
+- ADR-0051 and ADR-0052 were not ratified **in the audited 2026-11-23 slice**; both were ratified on 2026-11-24 (ISS-08 and ISS-12 closed).
 - No unresolved `TBD` was answered.
 - No permission grants, roles, tenants, users, warehouses or demo stock were seeded.
 - No client-supplied tenant, price, quantity, cost or approval state was added.
@@ -180,4 +179,4 @@ Only Phase 1-safe work was implemented:
 
 ## 8. Conclusion
 
-The repository contains a substantial persistence/security foundation, a startable API host with health/OpenAPI endpoints, complete current-phase test tiers and local reference deployment/CI scaffolding, but it is not an operational SaaS product. The largest functional gaps are authentication/RBAC evaluation, all business endpoints, frontend/PWA and validated deployment. Those gaps are deliberate phase boundaries or owner decisions, not reasons to silently invent unapproved behaviour.
+The repository contains a substantial persistence/security foundation, a startable API host with health/OpenAPI endpoints, complete current-phase test tiers and local reference deployment/CI scaffolding, but it is not an operational SaaS product. The largest functional gaps are authentication/RBAC evaluation, all business endpoints, the production frontend/PWA and validated deployment. Those gaps are deliberate phase boundaries or owner decisions, not reasons to silently invent unapproved behaviour.

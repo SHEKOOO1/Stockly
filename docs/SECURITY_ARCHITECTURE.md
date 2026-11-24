@@ -5,7 +5,7 @@
 | Document | `SECURITY_ARCHITECTURE.md` |
 | Version | 1.1.0 |
 | Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
-| Last updated | 2026-09-30 |
+| Last updated | 2026-11-24 (ADR-0051 documentation added; no control changed) |
 | Known limitations | 9 registered (§15) — none may be removed without a decision, a test, and a status update |
 | Related | `ROLES_PERMISSIONS.md`, `ARCHITECTURE.md`, `BUSINESS_RULES.md`, `TESTING_STRATEGY.md` |
 
@@ -67,6 +67,36 @@ layer, MUST NOT be sufficient to breach isolation.
 | **Unauthorized file** | Malicious upload / path traversal | GUID storage keys, allowlist + magic-byte validation, authorized download endpoint, `nosniff` (ADR-0025) |
 | **CSRF** | Cookie-authenticated state-changing request from a malicious site | Refresh cookie is `SameSite=Strict`; access token is memory-only and requires an explicit header; anti-CSRF token for any cookie-authenticated mutation (ADR-0030) |
 | **XSS** | Stored product name renders script in terminal UI | Output encoding by the framework; strict CSP; no `dangerouslySetInnerHTML`; sanitization for any rich text; stored-XSS test |
+
+### 2.1 Database-enforced tenant isolation (ADR-0051)
+
+The data layer is a security boundary even when application code is bypassed.
+The applied `TenantIsolation` migration enforces tenant ownership at SQL Server:
+
+- 60 tenant-scoped tables carry a `CK_<Table>_TenantScope` `CHECK` backed by
+  `security.fnStocklyRowTenantAllowed`, which gates `INSERT` and `TenantId`
+  reassignment.
+- The same 60 tables are covered by one RLS `FILTER PREDICATE`,
+  `security.spStocklyTenantPolicy`, backed by the schema-bound inline function
+  `security.fnStocklyTenantVisible`, which gates `SELECT`, `UPDATE` and
+  `DELETE`.
+- Tenant scope is written to every physical connection by
+  `TenantScopeConnectionInterceptor` via `sp_set_session_context`
+  (`StocklyScope = 1`, `StocklyTenantId = <session tenant>`). Scope is derived
+  only from the authenticated session, never from a header, route or body field.
+- Platform scope (`StocklyScope = 2`) is necessary but not sufficient: the
+  principal must also be a member of the database role
+  `stockly_platform_role`. A tenant principal that sets `StocklyScope = 2`
+  still sees zero rows and cannot grant itself the role.
+- Nullable-`TenantId` tables (`audit.AuditLog`, `ops.OutboxMessage`,
+  `identity.AuthSession`) accept a null tenant only in platform scope. The
+  outbox readiness monitor is a read-only platform principal; the dispatcher is
+  a separate write-capable platform principal. Neither is the tenant-facing
+  application principal.
+
+EF query filters and composite keys are defence in depth, not substitutes.
+Schema conformance is a deploy-time gate: a tenant-scoped table without its
+`CHECK` and RLS predicate fails the migration and the verification SQL.
 
 ---
 

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Hosting;
 using Stockly.Api.Configuration;
+using Stockly.Infrastructure.Outbox;
 using Stockly.StocklyDbTestSupport;
 
 namespace Stockly.IntegrationTests;
@@ -18,15 +19,24 @@ public sealed class ApiHostTests
     {
         fixture.RequireServer();
 
-        _factory = new StocklyApiFactory(fixture.ConnectionString);
+        _factory = new StocklyApiFactory(
+            fixture.ConnectionString,
+            fixture.EnsurePlatformPrincipalAsync().GetAwaiter().GetResult());
     }
 
-    private sealed class StocklyApiFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class StocklyApiFactory(string connectionString, string monitorConnectionString)
+        : WebApplicationFactory<Program>
     {
         protected override IHost CreateHost(IHostBuilder builder)
         {
-            var original = Environment.GetEnvironmentVariable(DatabaseConnection.EnvironmentVariable);
+            var originalDatabase = Environment.GetEnvironmentVariable(DatabaseConnection.EnvironmentVariable);
+            var originalMonitor = Environment.GetEnvironmentVariable(OutboxOptions.MonitorConnectionEnvironmentVariable);
+            var originalWorker = Environment.GetEnvironmentVariable(OutboxOptions.WorkerConnectionEnvironmentVariable);
+            var originalEnabled = Environment.GetEnvironmentVariable("Outbox__Enabled");
             Environment.SetEnvironmentVariable(DatabaseConnection.EnvironmentVariable, connectionString);
+            Environment.SetEnvironmentVariable(OutboxOptions.MonitorConnectionEnvironmentVariable, monitorConnectionString);
+            Environment.SetEnvironmentVariable(OutboxOptions.WorkerConnectionEnvironmentVariable, monitorConnectionString);
+            Environment.SetEnvironmentVariable("Outbox__Enabled", "false");
 
             try
             {
@@ -34,7 +44,10 @@ public sealed class ApiHostTests
             }
             finally
             {
-                Environment.SetEnvironmentVariable(DatabaseConnection.EnvironmentVariable, original);
+                Environment.SetEnvironmentVariable(DatabaseConnection.EnvironmentVariable, originalDatabase);
+                Environment.SetEnvironmentVariable(OutboxOptions.MonitorConnectionEnvironmentVariable, originalMonitor);
+                Environment.SetEnvironmentVariable(OutboxOptions.WorkerConnectionEnvironmentVariable, originalWorker);
+                Environment.SetEnvironmentVariable("Outbox__Enabled", originalEnabled);
             }
         }
     }
@@ -68,6 +81,7 @@ public sealed class ApiHostTests
         body.RootElement.GetProperty("status").GetString().Should().Be("ready");
         body.RootElement.GetProperty("database").GetString().Should().Be("ok");
         body.RootElement.GetProperty("migrations").GetString().Should().Be("current");
+        body.RootElement.GetProperty("outbox").GetString().Should().Be("ok");
     }
 
     [Fact]

@@ -21,22 +21,13 @@ Consequences, Affected components.
 > (`PROJECT_BLUEPRINT.md` §23.1).
 >
 > **2026-10-03:** the Phase 1 implementation added **ADR-0052** as `Proposed`
-> (one canonical `Stockly` database for development and all test tiers). The
-> ratified set is therefore ADR-0001 – ADR-0050, all `Accepted`; ADR-0052 is
-> **not** ratified and its ratification is a pending owner action.
+> (one canonical `Stockly` database for development and all test tiers).
 >
-> **⚠ ADR-0051 is reserved and is NOT recorded in this file.** Seven code sites
-> already cite *ADR-0051* as the tenant-isolation decision (SQL Server row-level
-> security, the per-table TenantScope `CHECK`s and the `SESSION_CONTEXT` scope
-> channel) — see `Migrations/20261001184551_TenantIsolation.cs`,
-> `Migrations/TenantIsolationSql.cs`,
-> `Security/TenantScopeConnectionInterceptor.cs`,
-> `TenantScopeModelCacheKeyFactory.cs` and
-> `SecurityTests/TenantIsolationTests.cs`. That decision is **implemented and
-> applied to the database but has no ADR and no section in `DATABASE_DESIGN.md`
-> or `SECURITY_ARCHITECTURE.md`**. It is an open owner action
-> (`DEVELOPMENT_STATUS.md` ISS-08): ADR-0051 must be authored and ratified.
-> **Do not reuse the identifier ADR-0051 for anything else.**
+> **2026-11-24:** the product owner closed ISS-08 and ISS-12. **ADR-0051** was
+> authored to record the already-implemented tenant-isolation decision, and both
+> ADR-0051 and ADR-0052 were ratified as **Accepted**. All 52 written ADRs are
+> now in force. Ratifying them did not decide any `TBD` and changed no entity,
+> permission code, role grant, business rule or error-code count.
 
 ---
 
@@ -94,8 +85,8 @@ Consequences, Affected components.
 | ADR-0048 | One Tenant is one legal/business entity; no entity hierarchy (TBD-24) | **Accepted** |
 | ADR-0049 | V1 engineering scale target (TBD-25) | **Accepted** |
 | ADR-0050 | Stock reservation semantics are unresolved future scope (TBD-26) | **Accepted** |
-| ADR-0051 | *(reserved — tenant isolation / RLS; cited by code, not yet recorded)* | **not written** |
-| ADR-0052 | One canonical `Stockly` database for development and all test tiers | **`Proposed`** |
+| ADR-0051 | Database-enforced tenant isolation (RLS, TenantScope `CHECK`, `SESSION_CONTEXT`) | **Accepted** |
+| ADR-0052 | One canonical `Stockly` database for development and all test tiers | **Accepted** |
 
 ADR-0001–ADR-0031 are the original architecture set; ADR-0032–ADR-0044 were added
 during blueprint finalization to close contradictions that the original set left
@@ -109,14 +100,11 @@ were `Proposed` until the final blueprint ratification of 2026-09-30 and are now
 `Accepted`. ADR-0008 is the PIN/password hashing decision; ADR-0018 is the FEFO
 decision extended by ADR-0041.
 
-**ADR-0051 is reserved** for the tenant-isolation decision that the Phase 1 code
-already cites (row-level security, TenantScope `CHECK`s, `SESSION_CONTEXT`) but
-that was never recorded here; it is listed in the index as *not written* and is
-tracked as ISS-08. **ADR-0052** was added on 2026-10-03 during Phase 1
-implementation and is `Proposed`, not `Accepted`: it is an engineering decision
-taken to satisfy the already-ratified `TESTING_STRATEGY.md` §1.4, not a
-product-owner decision, and it has **not** been ratified. Ratification of
-ADR-0052 is an owner action.
+**ADR-0051** records the database-enforced tenant-isolation decision that the
+Phase 1 code already cites (row-level security, TenantScope `CHECK`s,
+`SESSION_CONTEXT`). It was authored and ratified on 2026-11-24, closing ISS-08.
+**ADR-0052** was added on 2026-10-03 during Phase 1 implementation and was
+ratified on 2026-11-24, closing ISS-12.
 
 ### Status summary
 
@@ -124,12 +112,12 @@ ADR-0052 is an owner action.
 |---|---|---|
 | `Accepted` — ratified with blueprint v1.1 on 2026-09-30 | **44** | ADR-0001 – ADR-0044 |
 | `Accepted` — explicit product-owner decisions, 2026-09-30 | **6** | ADR-0045 – ADR-0050 |
-| `Proposed` — awaiting owner ratification | **1** | ADR-0052 |
-| *Reserved, not yet written* | **1** | ADR-0051 (ISS-08) |
+| `Accepted` — Phase 1 ratifications, 2026-11-24 | **2** | ADR-0051 – ADR-0052 |
+| `Proposed` — awaiting owner ratification | **0** | — |
+| *Reserved, not yet written* | **0** | — |
 | `Superseded` / `Rejected` | **0** | — |
 
-**Total: 51 written ADRs — 50 `Accepted`, 1 `Proposed`** (plus ADR-0051
-reserved and not yet written).
+**Total: 52 written ADRs — 52 `Accepted`.**
 
 ---
 
@@ -1671,10 +1659,91 @@ candidate pending TBD-26**, not as a decided V2 feature.
 
 ---
 
+## ADR-0051 — Database-enforced tenant isolation
+
+**Reference:** `DEVELOPMENT_STATUS.md` ISS-08 · **Date:** 2026-11-24 ·
+**Status:** Accepted (owner ratification 2026-11-24) ·
+**Effective version:** Phase 1 implementation
+
+**Topic:** How is the tenant boundary enforced if application-layer filtering or
+tenant-context wiring fails, or if a principal connects directly to SQL Server?
+
+**Decision.**
+
+1. Every tenant-scoped table carries a non-null `TenantId`, a tenant ownership
+   `CHECK` constraint named `CK_<Table>_TenantScope`, and a row-level security
+   `FILTER PREDICATE` on `TenantId`. The ratified V1 set is **60** such tables;
+   the migration asserts that count and refuses to deploy a mismatch.
+2. `security.fnStocklyRowTenantAllowed` gates `INSERT` and `TenantId`
+   reassignment. Tenant scope requires a non-null `StocklyTenantId` in
+   `SESSION_CONTEXT` equal to the row's `TenantId`; a tenant session can never
+   write a platform-level row.
+3. `security.fnStocklyTenantVisible` gates `SELECT`, `UPDATE` and `DELETE` through
+   one policy, `security.spStocklyTenantPolicy`. A tenant session sees only rows
+   whose `TenantId` matches its session context.
+4. Platform authority requires **both** `StocklyScope = 2` in `SESSION_CONTEXT`
+   **and** membership of the database role `stockly_platform_role`. Session
+   context alone cannot confer platform rights, and a tenant principal cannot
+   grant itself the role.
+5. Tables with nullable `TenantId` — `audit.AuditLog`, `ops.OutboxMessage` and
+   `identity.AuthSession` — may carry a null tenant only when written in platform
+   scope. This is why the outbox readiness monitor and dispatcher principals must
+   be members of `stockly_platform_role`.
+6. Tenant scope is written to each physical SQL connection by
+   `TenantScopeConnectionInterceptor` from the authenticated `ITenantContext`,
+   and included in the EF model cache key by `TenantScopeModelCacheKeyFactory`.
+   EF query filters and composite foreign keys remain additional defence-in-depth
+   layers, never replacements for the database predicates.
+7. The six genuinely global tables (`identity.LoginAttempt`,
+   `identity.Permission`, `identity.Tenant`, `platform.AppUser`, `platform.Plan`,
+   `platform.PlanFeature`) are deliberately outside the policy because they have
+   no `TenantId`.
+
+**Reason.** Tenant isolation is the strongest security guarantee in Stockly. The
+Phase 1 implementation already enforced it in the database and proved it with 20
+security tests, but seven code sites cited an ADR-0051 that had never been
+authored. That left the decision unratified and undocumented in the two design
+documents, which is a traceability defect even when the implementation is
+correct. The owner ratified the existing design rather than changing it.
+
+**Alternatives considered.** Application-only `WHERE TenantId = ...` filters
+(rejected: a single missed predicate leaks data). EF global query filters alone
+(rejected: they disappear if a caller uses `IgnoreQueryFilters`, raw SQL or a
+non-EF client). Platform authority from `SESSION_CONTEXT` alone (rejected: any
+session could set it). Hand-written per-table policies (rejected: a new
+tenant-scoped table could ship unprotected; the migration discovers tables from
+`sys.tables` and fails on count or coverage drift). Redesigning the implemented
+mechanism (rejected: the code and tests already define a coherent, tested
+design).
+
+**Consequences.** Schema conformance is deploy-time enforced: 60 RLS filter
+predicates, 60 TenantScope `CHECK` constraints and no untagged tenant-scoped
+table. Adding or removing a tenant-scoped table now requires a deliberate update
+to this ADR, the migration count, the verification SQL, the security tests and
+the design documents in the same change. Database principals used by background
+workers must be provisioned explicitly; read-only monitoring and write-capable
+dispatching are separate least-privilege principals. No product-visible change:
+the ratified counts of 66 entities, 105 permission codes, 11 tenant + 1 platform
+authority, 147 business rules and 27 error codes are unchanged.
+
+**Affected:** `src/Stockly.Infrastructure/Persistence/Migrations/20261001184551_TenantIsolation.cs`,
+`src/Stockly.Infrastructure/Persistence/Migrations/TenantIsolationSql.cs`,
+`src/Stockly.Infrastructure/Persistence/Security/TenantScopeConnectionInterceptor.cs`,
+`src/Stockly.Infrastructure/Persistence/Security/TenantScopeSession.cs`,
+`src/Stockly.Infrastructure/Persistence/TenantScopeModelCacheKeyFactory.cs`,
+`tests/Stockly.SecurityTests/TenantIsolationTests.cs`,
+`tools/Stockly.VerifyDatabase.sql`, `docs/DATABASE_DESIGN.md`,
+`docs/SECURITY_ARCHITECTURE.md`. **Data migration impact:** none — this ADR
+ratifies the already-applied `TenantIsolation` migration. **API compatibility
+impact:** none. **Regression tests:** the 20 `TenantIsolationTests` and the
+schema conformance gate must pass.
+
+---
+
 ## ADR-0052 — One canonical `Stockly` database for development and all test tiers
 
 **Reference:** `TESTING_STRATEGY.md` §1.4 · **Date:** 2026-10-03 ·
-**Status:** **Proposed** — *not ratified; ratification is a pending owner action* ·
+**Status:** Accepted (owner ratification 2026-11-24) ·
 **Effective version:** Phase 1
 
 **Topic:** May test suites run against their own freshly-created databases, or is
@@ -1763,7 +1832,8 @@ the guarantee testable and the answer unambiguous.
 none. **Regression tests:** `Stockly.SecurityTests.TenantIsolationTests` (20
 tests) and `Stockly.IntegrationTests` (33 tests in the current run) must both pass against the
 canonical database, and the test fixture must fail rather than fall back to a
-default database.
+default database. `Stockly.IntegrationTests` now contains 40 tests in the current
+run, including the outbox tier added after the original ADR was proposed.
 
 ---
 

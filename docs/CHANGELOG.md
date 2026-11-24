@@ -11,6 +11,77 @@ recorded, even in early phases.
 
 ## [Unreleased]
 
+### Added — 2026-11-24 (initial frontend skeleton)
+
+- **`client/` React + TypeScript + Vite frontend skeleton.** Implements 34
+  Arabic RTL page routes (8 platform, 8 organization, 18 warehouse), the
+  three-context shell, breadcrumbs, command palette, responsive sidebar,
+  context selectors, notifications, toasts, reusable tables/forms/dialogs/charts,
+  typed i18n modules, isolated `origin: 'demo'` data and 5 smoke tests.
+  All page content is built; no page renders `PlaceholderPage`.
+- **`docs/INITIAL_FRONTEND_IMPLEMENTATION.md`** records the implemented,
+  local-only and not-started status, verification evidence and file map.
+- **`.gitignore`** now allows the committed hand-written
+  `client/public/manifest.webmanifest` while still ignoring generated PWA assets.
+
+### Tests — 2026-11-24 (initial frontend skeleton)
+
+- Frontend gates pass: `npm run format:check`, `npm run typecheck`,
+  `npm run lint`, `npm test` (5 passed) and `npm run build`.
+- Production-build browser scan verified all 34 routes as RTL with a heading and
+  zero placeholder components, plus context switching, toast, command palette,
+  search empty state, modal and no console/page errors.
+- Backend regression re-run after the frontend work: clean format, clean
+  `-warnaserror` build, clean EF model-drift check and **440 passed / 0 failed /
+  0 skipped** with `STOCKLY_TEST_SQLSERVER` set. Docker validation remains
+  unavailable and unclaimed.
+
+### Fixed — 2026-11-24 (initial frontend skeleton)
+
+- Generic demo organisation name and code replace the first-target customer name
+  in frontend demonstration data, preserving the blueprint rule that no tenant
+  name is hardcoded in source.
+- Frontend README and smoke-test wording no longer describe the built pages as
+  placeholders.
+
+### Added — 2026-11-24 (Phase 1 ADR/outbox closure)
+
+- **ADR-0051 — database-enforced tenant isolation.** Authored and ratified to
+  record the already-applied RLS, TenantScope `CHECK` and `SESSION_CONTEXT`
+  design cited by seven code sites (ISS-08 closed). Added §6.1 to
+  `DATABASE_DESIGN.md` and §2.1 to `SECURITY_ARCHITECTURE.md`. No schema or
+  product count changed.
+- **ADR-0052 ratified.** The one-canonical-`Stockly`-database convention is now
+  `Accepted` (ISS-12 closed). The ratified ADR count is **52**, not 50.
+- **Outbox readiness and dispatcher foundation.** `/health/ready` now gates on an
+  `ops.OutboxMessage` snapshot and returns `503` when the monitor is unavailable,
+  any message is `DeadLetter`, or a `Pending`/`Processing` row is older than the
+  configurable stale threshold (default 15 minutes). Added an options model, a
+  read-only platform-scoped monitor, a write-capable platform-scoped coordinator,
+  a background dispatcher, handler abstraction and DI registration. Thresholds,
+  lease and poll interval are configurable.
+- **Outbox environment template.** `.env.example` now includes separate
+  `StocklyOutboxMonitor` (read-only) and `StocklyOutboxWorker` (write-capable)
+  connection strings and the `Outbox__*` options. No secret value was added.
+
+### Tests — 2026-11-24 (Phase 1 ADR/outbox closure)
+
+- Added seven DB-backed `OutboxIntegrationTests`: transactional commit/rollback
+  with a business row, once-only dispatch, retry/backoff and dead-letter,
+  stale-lease recovery, unknown-handler release, readiness degrade/recovery, and
+  fail-closed readiness without a monitor.
+- Updated the existing API host tests to configure the platform monitor and
+  disable the dispatcher. Full solution total is now **440 tests** (322 unit,
+  51 architecture, 40 integration, 20 security, 3 concurrency, 4 migration), all
+  passing against real SQL Server.
+
+### Fixed — 2026-11-24 (Phase 1 ADR/outbox closure)
+
+- **Dockerfile restore defect.** The image restored `Stockly.slnx` without copying
+  the test projects it references. It now restores and publishes
+  `src/Stockly.Api/Stockly.Api.csproj` directly. Both commands were run locally;
+  Docker itself remains unavailable, so no container build/run is claimed.
+
 ### Added — 2026-11-23 (Phase 1 verification and reference infrastructure)
 
 - **Local deployment reference scaffold.** Added `Dockerfile`, `.dockerignore`,

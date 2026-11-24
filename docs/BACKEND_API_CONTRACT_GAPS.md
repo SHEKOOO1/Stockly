@@ -1,6 +1,6 @@
 # Backend API Contract Gaps — Stockly
 
-Status date: 2026-11-23
+Status date: 2026-11-24
 
 ## 1. Purpose
 
@@ -24,7 +24,7 @@ The running API maps only:
 | Route | Status |
 |---|---|
 | `GET /health/live` | Implemented; liveness only |
-| `GET /health/ready` | Implemented; database connectivity and applied migrations only |
+| `GET /health/ready` | Implemented; database connectivity, applied migrations and outbox backlog snapshot (fail-closed when the monitor is unavailable) |
 | `GET /api-docs/openapi.json` | Implemented; sanitised document with fixed title/version and no server list |
 
 There are no `/api/v1/**` business controllers, no authentication handlers, no
@@ -56,7 +56,7 @@ operations to which that metadata could attach.
 | `If-Match` / `ETag` not enforced | `API_CONVENTIONS.md` §5.1 and API-TBD-06 | No mutable endpoint exists to return an ETag or require `428 precondition_required` |
 | Rate-limit headers and numbers absent | `API_CONVENTIONS.md` §§5.1, 10 and API-TBD-04; TBD-04 unresolved | No endpoint can document or emit `X-RateLimit-*`; provisional numbers must not be frozen as a decision |
 | Localization contract absent | `API_CONVENTIONS.md` §5.1; ADR-0020 | No `Accept-Language` handling or Arabic/English response selection exists |
-| Readiness contract incomplete | `ARCHITECTURE.md` §8 requires outbox backlog in `/health/ready` | Current readiness checks only DB connectivity and migration state |
+| Outbox producers absent | Readiness checks DB, migrations and the outbox snapshot; no production code creates `ops.OutboxMessage` rows | Readiness degrades on real backlog, but no business side effect currently populates it |
 | Health routes are outside `/api/v1` | `Program.cs` | Correct for probes, but they must not be presented as business API coverage |
 
 ## 4. Endpoint-area gaps
@@ -165,6 +165,6 @@ phase implements each area. They are not active policy declarations.
 | JSON DTO schemas from approved docs | Missing; must be designed per phase |
 | Per-route permission and warehouse-scope policy | Primitive exists; not attached to any route |
 | Cross-cutting headers and RFC 9457 body shape | Implemented at host level |
-| Health/liveness/readiness | Liveness and basic readiness implemented; outbox backlog missing |
+| Health/liveness/readiness | Liveness and outbox-aware readiness implemented; no business outbox producer exists |
 | Swagger UI | Not implemented; deliberate package/security choice |
-| Frontend/PWA | Missing; Phase 8 |
+| Frontend/PWA | Mocked/static skeleton exists under `client/`; production PWA and shared terminal remain Phase 8 |

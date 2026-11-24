@@ -5,8 +5,8 @@
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-23 |
-| Updated by | Phase 1 implementation session (API host, DB tiers, local infrastructure, CI and API contract audit) |
+| Last updated | 2026-11-24 |
+| Updated by | Initial frontend implementation and final verification |
 | Product | Stockly (ستوكلي) |
 | Blueprint version | **1.1.0 — `STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1`** |
 | Released code version | None — Phase 1 implementation is in progress |
@@ -19,14 +19,16 @@
 model, `DbContext`, EF configurations, two migrations), the tenant-isolation
 enforcement (RLS + TenantScope + `SESSION_CONTEXT`), the API cross-cutting
 plumbing (RFC 9457 writer, correlation id, security headers, forwarded-IP
-resolver, fail-fast connection resolution), local Docker/Nginx reference
-scaffolding and a CI workflow are implemented and build clean. The frontend is
-not started, no business endpoints exist, and container validation has not been
-performed. Phase 1 is **not complete**.
+resolver, fail-fast connection resolution), the transactional-outbox readiness
+and dispatcher foundation, local Docker/Nginx reference scaffolding and a CI
+workflow are implemented and build clean. An early mocked/static frontend
+skeleton exists under `client/`, but no business endpoints or outbox handlers
+exist and container validation has not been performed. Phase 1 is **not complete**.
 
 The blueprint was **ratified in full by the product owner on 2026-09-30**:
 ADR-0001 – ADR-0050 are all `Accepted`, and SEC-KNW-01 – SEC-KNW-09 are
-explicitly acknowledged as accepted V1 limitations.
+explicitly acknowledged as accepted V1 limitations. ADR-0051 and ADR-0052 were
+ratified on 2026-11-24, so all 52 written ADRs are now `Accepted`.
 
 **Blueprint: RATIFIED.** Design work is complete and the authority gate is
 closed.
@@ -34,7 +36,8 @@ closed.
 **Implementation: PARTIAL (see §14–§17).** The solution, domain model, EF model,
 both migrations, the isolation enforcement, all six DB-backed/unit/architecture
 test tiers, local Docker/Nginx reference scaffolding and a CI workflow exist and
-build clean. There is **no frontend, no business API and no Docker validation**.
+build clean. There is an **early mocked/static frontend skeleton**, but **no
+business API and no Docker validation**.
 
 **The API starts.** The exception-handler configuration defect recorded as ISS-09
 was fixed on 2026-11-23 by supplying a fallback request delegate without adding
@@ -67,8 +70,8 @@ limitations were accepted as known V1 limitations, not as remediated findings.
 
 | Question | Answer |
 |---|---|
-| **Phase 1 authorisation** — may Phase 1 start? | **READY.** Zero decision blockers; blueprint and all 50 ratified ADRs ratified |
-| **Phase 1 database-dependent verification** — may Phase 1 be called *complete*? | **PARTLY DONE.** SQL Server is available and all DB-backed tiers pass, including real concurrency and migration tests; the API starts and serves health/OpenAPI endpoints. **Not yet complete**: ADR-0051 is unwritten (ISS-08), ADR-0052 is unratified (ISS-12), S1–S12 are Phase 2-gated, and the outbox readiness check/business API remain unimplemented |
+| **Phase 1 authorisation** — may Phase 1 start? | **READY.** Zero decision blockers; blueprint and all 52 written ADRs ratified |
+| **Phase 1 database-dependent verification** — may Phase 1 be called *complete*? | **PARTLY DONE.** SQL Server is available and all DB-backed tiers pass, including real concurrency and migration tests; the API starts and serves health/OpenAPI endpoints; outbox readiness and dispatcher foundations are tested. **Not yet complete**: audit drain call site, route-level scope policy, business API/outbox handlers, Phase 2-gated S1–S12 and Docker validation remain outstanding |
 
 A missing environment is not a missing authorisation. Phase 1 may begin now;
 it may not be declared finished while required SQL Server-dependent tests are
@@ -82,22 +85,115 @@ unexecuted.
 | Blueprint internally consistent | ✅ Verified (see §5) |
 | Five Phase 1 blocking decisions | ✅ **DONE 2026-09-30** (TBD-19, 21, 22, 24, 25 → ADR-0045 – ADR-0049) |
 | Blueprint reviewed / ratified by owner | ✅ **DONE 2026-09-30 — RATIFIED** |
-| ADRs ratified | ✅ **50 of 50 ratified ADRs `Accepted`** (ADR-0001 – ADR-0044 promoted; ADR-0045 – ADR-0050 already `Accepted`). Plus **ADR-0051 reserved but never written** (ISS-08) and **ADR-0052 `Proposed`** |
+| ADRs ratified | ✅ **52 of 52 written ADRs `Accepted`** (ADR-0001 – ADR-0044 promoted 2026-09-30; ADR-0045 – ADR-0050 already `Accepted`; ADR-0051 authored and ADR-0052 ratified 2026-11-24) |
 | Security limitations acknowledged | ✅ **DONE 2026-09-30** — SEC-KNW-01 – SEC-KNW-09 accepted as V1 limitations |
 | Open owner decisions answered | ⏳ **5 decided, 16 open** — none blocks Phase 1, none resolved by ratification |
-| Phase 1 (implementation) | 🟡 **In progress** — persistence foundation, tenant-isolation enforcement, API host, health/OpenAPI endpoints, local Docker/Nginx reference scaffold and CI workflow done; no authentication/business endpoints and no Docker validation. ISS-09, ISS-10 and ISS-11 resolved |
-| Phase 1 database-dependent verification | 🟡 **SQL Server available and all tiers executed** — integration 33/33, security 20/20, concurrency 3/3 and migration 4/4 pass against the canonical database |
+| Phase 1 (implementation) | 🟡 **In progress** — persistence foundation, tenant-isolation enforcement, API host, health/OpenAPI endpoints with outbox readiness, outbox dispatcher foundation, local Docker/Nginx reference scaffold and CI workflow done; no authentication/business endpoints, outbox handlers or Docker validation. ISS-08, ISS-09, ISS-10, ISS-11 and ISS-12 resolved |
+| Phase 1 database-dependent verification | 🟡 **SQL Server available and all tiers executed** — integration 40/40, security 20/20, concurrency 3/3 and migration 4/4 pass against the canonical database |
 | Code written | Domain (66 entities, 12 schemas) + Infrastructure (DbContext, 66 configurations, 2 migrations, RLS/TenantScope enforcement, design-time factory) + Application (error contract, audit mapper/collector, redactor, scope model) + API (RFC 9457 writer, correlation id, security headers, forwarded-IP resolver, scope handler, tenant context, host wiring) + test support (`StocklyDbTestSupport`) |
 | Migrations written | **2 — `InitialSchema`, `TenantIsolation`** — both **applied to `localhost\SQLEXPRESS`**; schema verified at head |
-| Tests written | **433** — 322 unit, 51 architecture, 33 integration, 20 security, 3 concurrency, 4 migration |
-| Tests executed / passing | **433 PASS / 0 fail / 0 skipped** against real SQL Server (2026-11-23). `dotnet format` clean; build 0 warnings; `has-pending-model-changes` clean with local EF tools 10.0.12 |
-| Frontend | **None** (Phase 8) |
+| Tests written | **440** — 322 unit, 51 architecture, 40 integration, 20 security, 3 concurrency, 4 migration |
+| Tests executed / passing | **440 PASS / 0 fail / 0 skipped** against real SQL Server (2026-11-24). `dotnet format` clean; build 0 warnings; `has-pending-model-changes` clean with local EF tools 10.0.12 |
+| Frontend | **Mocked/static skeleton implemented** under `client/` — 34 Arabic RTL routes, local interactions, no API/auth/persistence; Phase 8 PWA not complete (§3b) |
+| Frontend skeleton handoff | 🟡 **B — READY WITH DOCUMENTED NON-BLOCKING LIMITATIONS** — mocked/static shell only; data-connected UI blocked by absent auth and `/api/v1/**` endpoints (§3a) |
 | Infrastructure | Local reference scaffold exists — `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `infra/nginx`, migration profile and `.github/workflows/ci.yml`; **not Docker-validated** |
 | Production readiness | **Not claimed. Nothing is deployed.** |
 
 ## 3. Last Completed Milestone
 
-**Phase 1 verification closure and reference infrastructure** (2026-11-23):
+**Phase 1 ADR/outbox closure slice** (2026-11-24): the owner closed ISS-08 and
+ISS-12 — ADR-0051 was authored to ratify the already-implemented tenant-isolation
+design and ADR-0052 was ratified, bringing the ratified ADR count to 52. The
+owner approved the outbox backlog policy (any `DeadLetter` or stale
+`Pending`/`Processing` older than 15 minutes degrades readiness; thresholds
+configurable; readiness uses a read-only platform principal). The API now gates
+`/health/ready` on an `ops.OutboxMessage` snapshot, and a dispatcher/coordinator
+foundation supports claim, retry/backoff, dead-letter, stale-lease recovery and
+unknown-handler release. Seven DB-backed outbox tests were added. The Dockerfile
+restore defect was fixed by restoring/publishing the API project directly.
+Verification: clean format, clean `-warnaserror` build, clean EF model-drift
+check, API-project restore/publish and 440 passing tests against real SQL Server.
+Docker execution remains unavailable and is not claimed.
+
+## 3a. Frontend Skeleton Handoff Review (2026-11-24)
+
+**Outcome: B. READY WITH DOCUMENTED NON-BLOCKING LIMITATIONS.**
+
+The repository is ready to start a **non-production, mocked/static frontend
+skeleton**: layout, routing, design system, localization scaffolding and mocked
+service adapters. It is **not** ready for a data-connected UI, a live login
+flow, real tenant/warehouse/user administration, business CRUD, or client-side
+authorization decisions. `PROJECT_BLUEPRINT.md` §25 keeps the complete frontend
+in Phase 8; §25.2 expressly permits the frontend to start early against a mocked
+or partial API. This handoff does **not** change that phase boundary and does
+**not** make Phase 1 complete.
+
+| Requirement reviewed | Evidence | Status |
+|---|---|---|
+| ISS-08 — tenant-isolation decision | `DECISIONS.md` ADR-0051 is `Accepted`; `DATABASE_DESIGN.md` §6.1 and `SECURITY_ARCHITECTURE.md` §2.1 document RLS, TenantScope `CHECK`s and `SESSION_CONTEXT`; 20 `TenantIsolationTests` pass against the canonical database | **RESOLVED** |
+| ISS-12 — canonical database decision | `DECISIONS.md` ADR-0052 is `Accepted`; `STOCKLY_TEST_SQLSERVER` is mandatory and all DB-backed tiers ran against the canonical `Stockly` database | **RESOLVED** |
+| Outbox readiness and dispatcher | `Program.cs:70`, `Program.cs:108-153`, `OutboxMonitor.cs:29-62`, `OutboxCoordinator.cs:27-180`, `OutboxDispatcher.cs:57-92`; seven DB-backed tests cover transactional commit/rollback, once-only dispatch, retry/backoff/dead-letter, stale-lease recovery, unknown-handler release, readiness degrade/recovery and fail-closed readiness | **PARTIAL — foundation operational, business integration absent** |
+| Outbox event producers / concrete handlers | No production code creates `ops.OutboxMessage` rows or implements `IOutboxMessageHandler`; only the integration tests do so | **MISSING by design until the first business side effect exists** |
+| Authentication, sessions and rate limiting | No `AddAuthentication`, login, refresh, lockout or rate limiter; `PhaseBoundaryTests.cs` fails if these are introduced early | **Phase 2 boundary; not a mocked-skeleton blocker, but a live-auth UI blocker** |
+| Business API surface | `Program.cs` maps only `/health/live`, `/health/ready` and `/api-docs/{documentName}.json`; `MapControllers()` has no controllers; no `/api/v1/**` routes or operation-level OpenAPI metadata exist | **Design ready; executable contract absent** |
+| Docker / Compose / Nginx | `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `infra/nginx` and `.github/workflows/ci.yml` exist; the API-project restore path is fixed and local restore/publish succeeded. No Docker build, Compose startup, Nginx request or container scan was run here; GitHub Actions has not executed the workflow | **Reference scaffold only; validation unavailable locally** |
+| Frontend contract readiness | `API_CONVENTIONS.md`, `WORKFLOWS.md`, `ROLES_PERMISSIONS.md` and `BACKEND_API_CONTRACT_GAPS.md` define intended routes and permissions, but there are no DTOs, typed clients or executable business operations. `BACKEND_API_CONTRACT_GAPS.md` §§2–3 still describe `/health/ready` as database/migration-only; that row is stale and must be corrected before that file is treated as the handoff contract source | **Mocked shell ready; data-connected UI blocked** |
+
+Non-blocking limitations for a mocked skeleton:
+
+1. Mock adapters must be clearly labelled and must not freeze unverified JSON
+   shapes as decisions; DTOs belong to the owning backend phase.
+2. No client may supply or infer identity, tenant, warehouse scope, permission,
+   role, price, quantity, cost or approval state. These stay server-side.
+3. The UI may show shell states for auth and administration, but it must not
+   claim working login, RBAC evaluation or live CRUD.
+4. Outbox-backed side effects cannot be exercised yet because no producer or
+   concrete handler exists.
+5. Docker, Compose, Nginx and hosted CI execution remain unvalidated; no
+   production-readiness claim is permitted.
+
+Handoff validation: `dotnet tool restore`, `dotnet format Stockly.slnx
+--verify-no-changes --no-restore`, `dotnet build Stockly.slnx --no-restore
+-warnaserror`, `dotnet ef migrations has-pending-model-changes --project
+src/Stockly.Infrastructure --startup-project src/Stockly.Infrastructure` and
+`dotnet test Stockly.slnx --no-build --no-restore` with
+`STOCKLY_TEST_SQLSERVER` set all passed on 2026-11-24: **440 passed, 0 failed,
+0 skipped** (322 unit, 51 architecture, 40 integration, 20 security, 3
+concurrency, 4 migration). No new code, ADR, phase decision or commit was made by
+this review.
+
+## 3b. Initial Frontend Implementation (2026-11-24)
+
+The mocked/static frontend authorised by §3a is now implemented in `client/`.
+It contains a React 18 + TypeScript + Vite application with 34 page routes
+(8 platform, 8 organization, 18 warehouse), an Arabic RTL shell, responsive
+navigation, breadcrumbs, command palette, context selectors, notifications,
+toasts, reusable tables/forms/dialogs/charts, typed i18n modules and isolated
+`origin: 'demo'` data. All 34 routes have built content; no page renders
+`PlaceholderPage`.
+
+Implemented interactions are local-only: context switching, notification state,
+command-palette navigation, search/filter/sort/pagination, create/edit/delete
+previews, validation, confirmation dialogs, tabs, toasts and simulated
+loading/empty/error states. There is **no** API call, DTO contract, login,
+refresh, token storage, RBAC evaluation, persistence, service worker, offline
+write, push subscription or shared-terminal flow. Demo data shapes are
+illustrative only and are not frozen backend decisions. The first-target
+customer name is not hardcoded in frontend source.
+
+Verification on 2026-11-24: `npm run format:check`, `npm run typecheck`,
+`npm run lint`, `npm test` (5 passed) and `npm run build` all passed. A
+production-build browser scan of all 34 routes reported `dir="rtl"`, a non-empty
+`h1`, `placeholders: 0`, working context switch (`org-1` → `org-2`) with toast,
+command palette, product-search empty state and modal, and zero console/page
+errors. The backend gates were re-run after the frontend work: tool restore,
+clean format, clean `-warnaserror` build, clean EF model-drift check and **440
+passed / 0 failed / 0 skipped**. Docker/Compose/Nginx and hosted CI remain
+unvalidated. Full detail, including implemented/not-started status by category,
+is in `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`. This does **not** make Phase 1
+or Phase 8 complete, and no commit was made.
+
+**Before that — Phase 1 verification closure and reference infrastructure** (2026-11-23):
 populated `Stockly.ConcurrencyTests` (3 tests) and `Stockly.MigrationTests`
 (4 tests), resolved ISS-10; pinned local `dotnet-ef` 10.0.12 and ReportGenerator
 5.6.0 tools, verified the model-drift gate and resolved ISS-11; added local
@@ -163,21 +259,20 @@ the API host wiring that makes the tenant-filtered data-access layer reachable.
 
 Remaining Phase 1 work, in order:
 
-1. **Author and ratify ADR-0051** (ISS-08; owner action) and document the
-   implemented tenant-isolation design in `DATABASE_DESIGN.md` and
-   `SECURITY_ARCHITECTURE.md`.
-2. **Call-site integration of the audit writer.** The mapper and collector exist and
+1. **Call-site integration of the audit writer.** The mapper and collector exist and
    are tested, but no application service drains `IAuditCollector` into its own
    `DbContext` change set yet. That drain-inside-the-transaction call site is what
    actually satisfies §16 rule 6, and it does not exist.
-3. **Route-level application of the scope policy.** `ScopeRequirementHandler` is
+2. **Route-level application of the scope policy.** `ScopeRequirementHandler` is
    registered, but no business endpoint exists to attach
    `ScopeRequirementHandler.ForRequest` to, so ADR-0034 is not yet enforced on any
    business route. Controllers arrive with the first use case.
+3. **Concrete outbox handlers and producers.** The readiness gate, coordinator and
+   dispatcher exist and are tested; no business event has a registered
+   `IOutboxMessageHandler` yet, so messages with unhandled types are released for
+   later processing rather than delivered.
 4. Final migration-to-design fidelity review (column-level, not counts).
-5. Complete `/health/ready` with the documented outbox-backlog check using an
-   approved least-privilege access model, then add localization and idempotency
-   infrastructure when their owning phases begin.
+5. Add localization and idempotency infrastructure when their owning phases begin.
 6. Validate the local Docker/Nginx scaffold on a workstation where Docker is
    available, and complete the remaining CI gates documented as pending in
    `TESTING_STRATEGY.md` §5. S1–S12 require Phase 2 authentication and are not
@@ -200,7 +295,7 @@ entry. A stale count is a defect, not a cosmetic issue.
 | Decisive / derived role grants | 33 decisive + 72 derived by D1–D5 | ADR-0044 |
 | Business rules | **147** | `BUSINESS_RULES.md` |
 | Business error codes | **27** (26 emitted + reserved `account_locked`) | `BUSINESS_RULES.md` |
-| Architecture decision records | **50 ratified `Accepted`** (ADR-0001–ADR-0050) + **ADR-0051 reserved, never written** (ISS-08) + **ADR-0052 `Proposed`** | `DECISIONS.md` |
+| Architecture decision records | **52 ratified `Accepted`** (ADR-0001–ADR-0052) | `DECISIONS.md` |
 | Workflows | **19** sections | `WORKFLOWS.md` |
 | Gating security test classes | **33** (`S1`–`S33`) | `TESTING_STRATEGY.md` |
 | Known security limitations | **9** (`SEC-KNW-01`–`SEC-KNW-09`) | `SECURITY_ARCHITECTURE.md` §15 |
@@ -211,12 +306,13 @@ entry. A stale count is a defect, not a cosmetic issue.
 | Disposed design decisions | 4 (`TBD-02`, `TBD-17`, `TBD-18`, `TBD-20`) | `PROJECT_BLUEPRINT.md` §23.2 |
 | Disposed safe assumptions | 1 (`TBD-16`) | `PROJECT_BLUEPRINT.md` §23.3 |
 
-**The ADR count moved from 44 to 50 and nothing else moved.** The five owner
-decisions and the reservation deferral each required a decision record, which
-`PROJECT_BLUEPRINT.md` §27 mandates. No entity, permission, role, business rule,
-error code, workflow or phase was added, removed or renumbered: 66 / 12 / 105 /
-13 / 11+1 / 147 / 27 / 19 / 33 / 9 / 8 are all unchanged. Verified mechanically
-after the edit.
+**The ADR count moved from 44 to 50 on 2026-09-30 and from 50 to 52 on
+2026-11-24; nothing else moved.** The five owner decisions, the reservation
+deferral, the tenant-isolation ratification and the canonical-database
+ratification each required a decision record, which `PROJECT_BLUEPRINT.md` §27
+mandates. No entity, permission, role, business rule, error code, workflow or
+phase was added, removed or renumbered: 66 / 12 / 105 / 13 / 11+1 / 147 / 27 /
+19 / 33 / 9 / 8 are all unchanged. Verified mechanically after the edit.
 
 Entity distribution: `platform` 6, `identity` 16, `ops` 2, `master` 7,
 `inventory` 8, `purchasing` 10, `events` 5, `food` 5, `notifications` 3,
@@ -237,7 +333,8 @@ Entity distribution: `platform` 6, `identity` 16, `ops` 2, `master` 7,
 | `docs/BACKEND_API_CONTRACT_GAPS.md` | Implemented-versus-documented API surface, missing DTOs/policies and route conflicts | Current implementation audit |
 | `docs/TESTING_STRATEGY.md` | Test projects, taxonomy, 33 gating security test classes, concurrency/integrity suites, CI gates | Final draft |
 | `docs/DEVELOPMENT_STATUS.md` | This file | Current |
-| `docs/DECISIONS.md` | ADR-0001 – ADR-0050 ratified; ADR-0051 reserved (not written); ADR-0052 `Proposed` | ✅ Ratified 2026-09-30 (ADR-0052 pending) |
+| `docs/INITIAL_FRONTEND_IMPLEMENTATION.md` | Initial mocked/static frontend implementation status and verification evidence | Current |
+| `docs/DECISIONS.md` | ADR-0001 – ADR-0052 ratified, all `Accepted` | ✅ Ratified 2026-09-30; ADR-0051 and ADR-0052 ratified 2026-11-24 |
 | `docs/CHANGELOG.md` | Change history | Current |
 | `README.md` | Repository overview, documentation reading order | Current |
 | `AGENTS.md` | Binding operating rules for AI agents | Final |
@@ -251,13 +348,14 @@ Entity distribution: `platform` 6, `identity` 16, `ops` 2, `master` 7,
 | Directory `H:\Stockly` | Exists |
 | Application source code | Domain, Application, Infrastructure and API projects under `src/` |
 | Migrations | **2** — `InitialSchema`, `TenantIsolation`; both applied |
-| Tests | Six active test projects plus the shared DB fixture library; **433 tests passing** |
+| Tests | Six active test projects plus the shared DB fixture library; **440 tests passing** |
+| Frontend | Untracked `client/` React + TypeScript + Vite skeleton; 34 routes and 5 frontend smoke tests passing |
 | Local infrastructure | `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `infra/nginx`, `.config/dotnet-tools.json`, `.github/workflows/ci.yml` |
 | Git repository | **Initialised** — branch `main` |
 | Baseline commit | `9121044` "Initial commit" |
 | Finalization checkpoint | `949a873` "docs: checkpoint surviving blueprint finalization work" |
 | Blueprint finalization commits | `67b26e6` (blueprint v1.0 + status + readme + changelog + DB index fix), `fe2eb7a` (ignore nested repo) |
-| Owner-decision correction (v1.1) and all Phase 1 code/infrastructure | **Uncommitted working-tree changes**. Nothing has been committed because the owner has not asked for a commit |
+| Owner-decision correction (v1.1), all Phase 1 code/infrastructure and the 2026-11-24 closure slice | **Uncommitted working-tree changes**. Nothing has been committed because the owner has not asked for a commit |
 | Nested repository `H:\Stockly\Stockly` | **Empty repo, no commits. Never tracked. Ignored via `.gitignore` by owner decision (ISS-04 — resolved).** Still on disk; do not delete or commit. **Not touched during this pass.** |
 | Unrelated user work destroyed | **None** |
 
@@ -284,7 +382,7 @@ image build remain unvalidated here.
 |---|---|
 | Backend | ASP.NET Core Web API, C#, **.NET 10 (LTS)**, EF Core, SQL Server 2022 |
 | API | REST, OpenAPI / Swagger, RFC 9457 ProblemDetails (ADR-0027) |
-| Frontend | React + TypeScript + Vite, PWA |
+| Frontend | React + TypeScript + Vite, PWA — mocked/static skeleton implemented; production PWA later |
 | Architecture | Modular Monolith, schema-per-module (ADR-0001, ADR-0016) |
 | Infrastructure | Docker, Nginx, HTTPS/TLS, CI/CD — **built in Phase 1** (ADR-0040) |
 | Test stack | xUnit, FluentAssertions, WebApplicationFactory, Testcontainers (MSSQL) |
@@ -380,7 +478,7 @@ superseded eleven-phase plan is in `PROJECT_BLUEPRINT.md` §25.1.
   - **API host wiring** — `StocklyDbContext` registered with a fail-fast
     connection string.
 - 264 passing tests at the time of that milestone: 229 unit, 35 architecture.
-  The current verified total is 433; see §14.
+  The current verified total is 440; see §14.
 
 **Design deviations found and corrected while implementing** (each was a real
 defect in the first implementation pass, not a documentation change):
@@ -418,9 +516,9 @@ defect in the first implementation pass, not a documentation change):
 1. ~~**Review and ratify `PROJECT_BLUEPRINT.md` v1.1** and the 44 `Proposed` ADRs
    (`PROJECT_BLUEPRINT.md` §27).~~ ✅ **DONE 2026-09-30 — RATIFIED.** ADR-0001 –
    ADR-0044 were promoted to `Accepted`; ADR-0045 – ADR-0050 were already
-   `Accepted`. **50 of the 50 ratified ADRs are `Accepted`.**
-   *(ADR-0052 is a later, unratified engineering decision — see §12 ISS-12. ADR-0051
-   is reserved and was never written — see §12 ISS-08.)*
+   `Accepted`. **50 of the 50 then-written ADRs were `Accepted`.**
+   ADR-0051 was authored and ADR-0052 was ratified on 2026-11-24, so **52 of 52
+   written ADRs are `Accepted`** (ISS-08 and ISS-12 closed).
 2. ~~**Acknowledge the 9 known security limitations** (`SEC-KNW-01`–`SEC-KNW-09`)
    as accepted for V1.~~ ✅ **DONE 2026-09-30.** Acknowledged as known V1
    limitations. They remain registered; none was fixed or closed.
@@ -548,16 +646,16 @@ See `PROJECT_BLUEPRINT.md` §25.
 |---|---|---|---|
 | ISS-01 | ~~Blueprint is unratified~~ | ✅ **RESOLVED 2026-09-30** — the owner ratified blueprint v1.1 and ADR-0001 – ADR-0050 in full. The authorisation gate is closed and Phase 1 is unblocked | None. Re-opens only if the blueprint is revised |
 | ISS-02 | 16 owner decisions unanswered | Behaviour **may** change — but none of them changes the V1 schema, and none blocks Phase 1 | Owner answers at the phase named in §20 |
-| ISS-03 | ~~Docker unavailable locally~~ → **DB-backed tests unrunnable** | ✅ **RESOLVED 2026-10-03** — a local SQL Server at `localhost\SQLEXPRESS` (Windows auth) is available and does not require Docker. Integration (33) and security (20) tiers now run against real SQL Server and pass. **Docker itself is still unavailable**, so container-based validation remains unclaimed | None. Re-opens only if containerised CI is required |
+| ISS-03 | ~~Docker unavailable locally~~ → **DB-backed tests unrunnable** | ✅ **RESOLVED 2026-10-03** — a local SQL Server at `localhost\SQLEXPRESS` (Windows auth) is available and does not require Docker. Integration (40) and security (20) tiers now run against real SQL Server and pass. **Docker itself is still unavailable**, so container-based validation remains unclaimed | None. Re-opens only if containerised CI is required |
 | ISS-04 | Empty nested repository at `H:\Stockly\Stockly` (no commits; Git commands fail inside it) | ✅ **RESOLVED** — ignored via `.gitignore` (commit `fe2eb7a`) by owner decision. The repo remains on disk, untracked and empty; nothing was deleted and nothing was ever committed. It no longer pollutes `git status`. | None. Do not delete or commit it without a new owner decision |
 | ISS-05 | No licence file | Legal ambiguity | Owner decision |
 | ISS-06 | No hosting/deployment target decided | Affects Docker, backups, TLS termination | Owner decision |
 | ISS-07 | Reservation semantics undefined (TBD-26) | None for V1 — `ReservedQuantity` is always `0` and no V1 flow uses it. Blocks only a future V2 reservations feature | Owner decision before any V2 reservation work |
-| ISS-08 | **ADR-0051 is cited by 7 code sites but was never written.** Tenant isolation (RLS, per-table TenantScope `CHECK`s, `SESSION_CONTEXT` scope channel) is **implemented and applied to the database**, and enforced by the 20 passing security tests, yet it has **no ADR and no section in `DATABASE_DESIGN.md` or `SECURITY_ARCHITECTURE.md`**. The identifier is now reserved | **Design-traceability defect.** The strongest tenant-isolation guarantee in the product is undocumented and therefore unratified. Anyone reusing ADR-0051 would collide with the code | **Owner action: author and ratify ADR-0051**, and add the RLS/TenantScope design sections to the two documents. Not done here — authoring a substantive security decision is not an implementation agent's call |
+| ISS-08 | ~~ADR-0051 was cited by 7 code sites but was never written~~ | ✅ **RESOLVED 2026-11-24** — the owner ratified the existing tenant-isolation design; ADR-0051 is now authored and `Accepted`, and `DATABASE_DESIGN.md` §6.1 and `SECURITY_ARCHITECTURE.md` §2.1 document RLS, TenantScope `CHECK`s and `SESSION_CONTEXT` | None. Re-opens only if the isolation design changes |
 | ISS-09 | ~~The API does not start~~ | ✅ **RESOLVED 2026-11-23** — `UseExceptionHandler()` now has a fallback delegate that writes through `ProblemDetailsWriter` and refuses to write to aborted or already-started responses. A real process served `/health/live`, `/health/ready` and `/api-docs/openapi.json` with 200. `UseAuthorization()` still has no authentication handler; that is the approved Phase 1/2 boundary, not a startup defect | None. Re-opens only if the host fails to start again |
 | ISS-10 | ~~Concurrency and migration test tiers are empty~~ | ✅ **RESOLVED 2026-11-23** — `Stockly.ConcurrencyTests` now has 3 real DB-backed tests and `Stockly.MigrationTests` has 4; both pass in the full solution run. A green solution run covers them | None. Re-opens only if either tier becomes empty or reports no tests |
 | ISS-11 | ~~`dotnet ef` fails when pointed at `Stockly.Api` as startup project~~ | ✅ **RESOLVED 2026-11-23** — the documented command uses `--startup-project src/Stockly.Infrastructure`; local tool manifest pins `dotnet-ef` 10.0.12; model-drift check passes. Adding `Microsoft.EntityFrameworkCore.Design` to `Stockly.Api` was rejected because restore exposed vulnerable transitive packages | None. Re-opens only if the model-drift gate fails |
-| ISS-12 | ADR-0052 (one canonical `Stockly` database for development and all test tiers) was added 2026-10-03 as `Proposed` and has not been ratified | The database convention is implemented and tested but remains formally unapproved | Owner action: review and ratify ADR-0052; no new ADR may be invented without a decision |
+| ISS-12 | ~~ADR-0052 was `Proposed` and unratified~~ | ✅ **RESOLVED 2026-11-24** — the owner ratified the one-canonical-database convention; ADR-0052 is `Accepted` | None. Re-opens only if the database convention is deliberately superseded |
 
 ## 13. Known Security Issues
 
@@ -617,12 +715,12 @@ reading a list of what exists.
 |---|---|---|---|---|
 | Unit | ✅ | **322** | ✅ | **PASS** (322/322) |
 | Architecture | ✅ | **51** | ✅ | **PASS** (51/51) |
-| Integration | ✅ | **33** | ✅ | **PASS** (33/33) against real SQL Server |
+| Integration | ✅ | **40** | ✅ | **PASS** (40/40) against real SQL Server |
 | Security | ✅ | **20** | ✅ | **PASS** (20/20) against real SQL Server |
 | Concurrency | ✅ | **3** | ✅ | **PASS** (3/3) against real SQL Server |
 | Migration | ✅ | **4** | ✅ | **PASS** (4/4) against real SQL Server |
 
-**433 tests pass; 0 fail; 0 skipped.** Verified 2026-11-23 by
+**440 tests pass; 0 fail; 0 skipped.** Verified 2026-11-24 by
 `dotnet test Stockly.slnx --no-build --no-restore` with
 `STOCKLY_TEST_SQLSERVER` set to the canonical local instance. `dotnet format
 Stockly.slnx --verify-no-changes --no-restore`, `dotnet build Stockly.slnx
@@ -639,12 +737,15 @@ reads source files from disk, so it covers `appsettings*.json`, launch settings,
 `.http`, Docker and Compose files. It passed with the new `Dockerfile`,
 `docker-compose.yml`, Nginx configuration and CI workflow present.
 
-**Database-backed (60)** — integration 33, security 20, concurrency 3 and
+**Database-backed (67)** — integration 40, security 20, concurrency 3 and
 migration 4. All ran against the canonical `Stockly` database on
 `localhost\SQLEXPRESS`. The concurrency tier asserts stale-rowversion rejection,
 single-winner unique-key races and transaction rollback. The migration tier
 asserts migration declaration/applied state, initial schema shape, tenant-isolation
-artifacts and trusted tenant-scope guards.
+artifacts and trusted tenant-scope guards. The 7 new integration tests cover
+transactional commit/rollback with a business row, once-only dispatch, retry and
+dead-letter, stale-lease recovery, unknown-handler release, readiness degrade and
+recovery, and fail-closed behaviour when no monitor is configured.
 
 The 33 gating security classes `S1`–`S33` in `TESTING_STRATEGY.md` remain a
 **specification of work to be done**; the current 20 security tests are real but
@@ -702,9 +803,12 @@ Compose profile, `.config/dotnet-tools.json` and `.github/workflows/ci.yml`.
 The scaffold follows `ARCHITECTURE.md` §11 (Nginx TLS termination, internal API,
 internal SQL Server, named volumes, injected secrets, gated migrations) and
 deliberately encodes no licence, hosting target, domain/certificate source or
-rate-limit decision. Docker is unavailable here, so no image build, Compose
-startup, Nginx request or container scan has been run. CI workflow YAML has not
-been executed by GitHub in this pass.
+rate-limit decision. On 2026-11-24 the restore defect was fixed: the image now
+restores and publishes `src/Stockly.Api/Stockly.Api.csproj` directly instead of
+restoring `Stockly.slnx` without its test projects. The exact API restore and
+Release publish commands were run locally with no errors. Docker is still
+unavailable here, so no image build, Compose startup, Nginx request or container
+scan has been run. CI workflow YAML has not been executed by GitHub in this pass.
 
 ## 18. Security Assumptions (to be confirmed by the owner)
 
@@ -734,15 +838,19 @@ been executed by GitHub in this pass.
 (`PROJECT_BLUEPRINT.md` §25). It is authorised and partly implemented, not
 complete.
 
+The frontend skeleton may begin now under outcome **B** in §3a, but only as a
+mocked/static shell. It must not be presented as a data-connected UI or as
+evidence that Phase 8 has started.
+
 Ratification of `docs/PROJECT_BLUEPRINT.md` v1.1 and of ADR-0001 – ADR-0050 was
-granted on 2026-09-30, so no further authorisation is needed to continue Phase 1.
-The remaining work is in §4: owner-authored ADR-0051, outbox readiness design,
-audit drain call site, route-level scope policy, column-level migration fidelity
-and Docker/CI validation.
+granted on 2026-09-30, and ADR-0051/ADR-0052 were ratified on 2026-11-24, so no
+further authorisation is needed to continue Phase 1. The remaining work is in §4:
+audit drain call site, route-level scope policy, concrete outbox handlers,
+column-level migration fidelity and Docker/CI validation.
 
 The 16 open decisions still do **not** need to be answered to continue Phase 1 —
 each is phase-gated or deferred (§20) — and ratification resolved none of them.
-ISS-08 and ISS-12 remain owner actions. Docker is unavailable locally, so no
+ISS-08 and ISS-12 are closed. Docker is unavailable locally, so no
 container-based claim may be made.
 
 ## 20. Blocked Items
@@ -777,10 +885,9 @@ container-based claim may be made.
 
 | Item | Blocked by |
 |---|---|
-| Final Phase 1 completion claim | Owner-authored/ratified ADR-0051 (ISS-08) and ADR-0052 ratification (ISS-12) |
-| Outbox-backlog readiness check | Owner decision on backlog statuses, stale `Processing`, `DeadLetter`, threshold and least-privilege access model |
+| Final Phase 1 completion claim | Audit drain call site, route-level scope policy, concrete outbox handlers and column-level migration fidelity |
 | S1–S12 completion claim | Phase 2 authentication, sessions and rate limiting; phase-boundary tests forbid adding them now |
-| Docker/Compose/Nginx validation | Docker is unavailable on this workstation |
+| Docker/Compose/Nginx validation | Docker is unavailable on this workstation; the restore defect is fixed but no container has been built |
 | Deployment/licence/hosting choices | Owner decisions (ISS-05, ISS-06) |
 
 ### 20.4 No longer blocked
@@ -800,3 +907,6 @@ These must **not** be listed as open anywhere:
 | Multi-entity tenants | TBD-24 → **decided 2026-09-30**, ADR-0048: one tenant is one legal entity |
 | Reporting scale target | TBD-25 → **decided 2026-09-30**, ADR-0049: ~50 warehouses, ~100 k products, ~10 M ledger rows, ~200 concurrent users — engineering targets, not subscription limits |
 | Stock reservations | Split out of TBD-10 → **TBD-26**, deferred and unresolved (ADR-0050). This is **not** resolved — it moved |
+| ADR-0051 traceability | Authored and ratified 2026-11-24 (ISS-08 closed); design sections added to `DATABASE_DESIGN.md` and `SECURITY_ARCHITECTURE.md` |
+| ADR-0052 ratification | Ratified 2026-11-24 (ISS-12 closed) |
+| Outbox readiness policy | Owner approved 2026-11-24: any `DeadLetter` or `Pending`/`Processing` older than 15 minutes degrades readiness; thresholds configurable; read-only monitor and write-capable dispatcher are separate platform principals |

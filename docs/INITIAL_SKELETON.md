@@ -40,7 +40,7 @@ implemented.
 - No `/api/v1` business controllers: receiving, issuing, transfers, stocktake,
   master data, events, food, reports and notifications are not implemented.
 - No audit collector drain inside a business transaction.
-- No frontend, PWA, service worker, shared terminal UI or offline support.
+- No production frontend/PWA, service worker, shared terminal UI or offline support. An early mocked/static skeleton now exists under `client/`; see `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`.
 - No validated container deployment or production target. Local reference
   `Dockerfile`, `docker-compose.yml`, `infra/nginx` and CI workflow exist but
   have not been run.
@@ -59,13 +59,13 @@ so this does not create an unauthenticated data-access surface.
 
 ## Verification
 
-On 2026-11-23:
+On 2026-11-24:
 
 - `dotnet tool restore` passed with pinned `dotnet-ef` 10.0.12 and ReportGenerator 5.6.0.
 - `dotnet format Stockly.slnx --verify-no-changes --no-restore` passed.
 - `dotnet build Stockly.slnx --no-restore -warnaserror` passed with 0 warnings and 0 errors.
 - EF model-drift check passed with `src/Stockly.Infrastructure` as startup project.
-- 433 tests passed: 322 unit, 51 architecture, 33 integration, 20 security,
+- 440 tests passed: 322 unit, 51 architecture, 40 integration, 20 security,
   3 concurrency, 4 migration.
 - A real API process previously returned 200 from liveness, readiness and OpenAPI.
 - Docker/Compose/Nginx and the GitHub Actions workflow have not been executed;
