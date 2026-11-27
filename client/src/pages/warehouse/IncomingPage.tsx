@@ -1,6 +1,7 @@
 import { ArrowDownToLine, Eye, Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  ConfirmDialog,
   DataTable,
   DemoNotice,
   ErrorState,
@@ -14,16 +15,19 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import {
-  demoDataOrigin,
-  demoMovements,
-  demoProducts,
-  demoSuppliers,
-  demoUnits,
-  demoUsers,
-} from '@/data/demoData';
+  inventoryErrorKeys,
+  makeInventoryRequestId,
+  useDemoInventoryStore,
+} from '@/data/demoInventoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
+import { useDemoSupplierStore } from '@/data/demoSupplierStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDateTime, formatNumber } from '@/lib/format';
+import { getSupplierDisplayName, getSupplierOptionLabel } from '@/lib/supplier';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { useDemoLoader } from '@/lib/useDemoLoader';
 import type { EntityStatus, InventoryMovement, StatusTone } from '@/types/domain';
 
@@ -71,60 +75,87 @@ interface IncomingFormState {
   productId: string;
   quantity: string;
   supplierId: string;
-  status: EntityStatus;
   notes: string;
+  requestId: string;
 }
 
 export function IncomingStockPage() {
   const { selectedOrganization, selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoMovements);
-  const [localMovements, setLocalMovements] = useState<readonly InventoryMovement[]>(demoMovements);
+  const { session } = useDemoSession();
+  const { products: allProducts } = useDemoProductStore();
+  const { units } = useDemoUnitStore();
+  const { suppliers: allSuppliers, getSelectableSuppliers } = useDemoSupplierStore();
+  const { movements, recordMovement } = useDemoInventoryStore();
+  const loader = useDemoLoader(movements);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [details, setDetails] = useState<InventoryMovement | null>(null);
   const [form, setForm] = useState<IncomingFormState>({
     productId: '',
-    quantity: '0',
+    quantity: '1',
     supplierId: '',
-    status: 'pending',
     notes: '',
+    requestId: '',
   });
   const [productError, setProductError] = useState(false);
   const [quantityError, setQuantityError] = useState(false);
 
   const products = useMemo(
-    () => demoProducts.filter((product) => product.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+    () =>
+      allProducts.filter(
+        (product) =>
+          product.warehouseId === selectedWarehouse.id && !product.isDeleted && product.isActive,
+      ),
+    [allProducts, selectedWarehouse.id],
   );
 
-  const suppliers = useMemo(
-    () => demoSuppliers.filter((supplier) => supplier.organizationId === selectedOrganization.id),
-    [selectedOrganization.id],
+  const productLabel = useCallback(
+    (productId: string): string =>
+      allProducts.find((product) => product.id === productId)?.name ?? productId,
+    [allProducts],
   );
+
+  function unitLabel(unitId: string, fallback = ''): string {
+    const unit = units.find((item) => item.id === unitId);
+    return unit ? getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix')) : fallback;
+  }
+
+  const selectableSuppliers = useMemo(
+    () => getSelectableSuppliers(selectedOrganization.id, [form.supplierId]),
+    [getSelectableSuppliers, selectedOrganization.id, form.supplierId],
+  );
+
+  function supplierFromNotes(notes: string) {
+    return allSuppliers.find(
+      (supplier) =>
+        notes.startsWith(supplier.code) ||
+        notes.startsWith(supplier.name) ||
+        notes.includes(`(${supplier.code})`),
+    );
+  }
 
   const incoming = useMemo(
     () =>
-      localMovements.filter(
+      movements.filter(
         (movement) => movement.warehouseId === selectedWarehouse.id && movement.type === 'STOCK_IN',
       ),
-    [localMovements, selectedWarehouse.id],
+    [movements, selectedWarehouse.id],
   );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return incoming.filter((movement) => {
-      const productName =
-        demoProducts.find((product) => product.id === movement.productId)?.name ?? '';
       const matchesSearch =
         needle === '' ||
-        `${productName} ${movement.relatedTransaction} ${movement.notes}`
+        `${productLabel(movement.productId)} ${movement.relatedTransaction} ${movement.notes}`
           .toLocaleLowerCase()
           .includes(needle);
       const matchesStatus = statusFilter === '' || movement.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [incoming, search, statusFilter]);
+  }, [incoming, search, statusFilter, productLabel]);
 
   const totalQuantity = useMemo(
     () => incoming.reduce((total, movement) => total + movement.quantity, 0),
@@ -142,12 +173,8 @@ export function IncomingStockPage() {
     {
       id: 'product',
       headerKey: 'warehouse.incoming.productColumn',
-      cell: (row) => (
-        <strong>
-          {demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
-        </strong>
-      ),
-      sortValue: (row) => row.productId,
+      cell: (row) => <strong>{productLabel(row.productId)}</strong>,
+      sortValue: (row) => productLabel(row.productId),
     },
     {
       id: 'quantity',
@@ -160,15 +187,18 @@ export function IncomingStockPage() {
     {
       id: 'unit',
       headerKey: 'warehouse.incoming.unitColumn',
-      cell: (row) => demoUnits.find((unit) => unit.id === row.unitId)?.code ?? row.unitId,
+      cell: (row) => unitLabel(row.unitId, row.unitId),
     },
     {
       id: 'supplier',
       headerKey: 'warehouse.incoming.supplierColumn',
       cell: (row) =>
-        demoSuppliers.find((supplier) => row.notes.startsWith(supplier.name))?.name ??
-        t('common.states.notAvailable'),
-      sortValue: (row) => row.notes,
+        getSupplierDisplayName(
+          supplierFromNotes(row.notes),
+          t('common.states.notAvailable'),
+          t('warehouse.suppliers.archivedSuffix'),
+        ),
+      sortValue: (row) => supplierFromNotes(row.notes)?.name ?? row.notes,
     },
     {
       id: 'transaction',
@@ -208,9 +238,9 @@ export function IncomingStockPage() {
     setForm({
       productId: products[0]?.id ?? '',
       quantity: '1',
-      supplierId: suppliers[0]?.id ?? '',
-      status: 'pending',
+      supplierId: selectableSuppliers[0]?.id ?? '',
       notes: '',
+      requestId: makeInventoryRequestId('receive'),
     });
     setProductError(false);
     setQuantityError(false);
@@ -218,6 +248,7 @@ export function IncomingStockPage() {
 
   function closeModal() {
     setAdding(false);
+    setConfirming(false);
     setProductError(false);
     setQuantityError(false);
   }
@@ -231,34 +262,35 @@ export function IncomingStockPage() {
     if (!productValid || !quantityValid) {
       return;
     }
+    setConfirming(true);
+  }
 
+  function confirmSave() {
+    const quantity = Number(form.quantity);
     const product = products.find((item) => item.id === form.productId);
-    const supplier = suppliers.find((item) => item.id === form.supplierId);
+    const supplier = allSuppliers.find((item) => item.id === form.supplierId);
     const trimmedNotes = form.notes.trim();
     const notes = supplier
-      ? `${supplier.name}${trimmedNotes ? ` — ${trimmedNotes}` : ''}`
+      ? `${supplier.name} (${supplier.code})${trimmedNotes ? ` — ${trimmedNotes}` : ''}`
       : trimmedNotes;
-    const responsibleUserId =
-      demoUsers.find((user) => user.warehouseIds.includes(selectedWarehouse.id))?.id ?? '';
-
-    setLocalMovements((current) => [
-      ...current,
-      {
-        origin: demoDataOrigin,
-        id: `mov-in-local-${Date.now()}`,
-        warehouseId: selectedWarehouse.id,
-        productId: form.productId,
-        type: 'STOCK_IN',
-        quantity,
-        unitId: product?.baseUnitId ?? '',
-        occurredAt: new Date().toISOString(),
-        responsibleUserId,
-        relatedTransaction: `TXN-LOCAL-${Date.now().toString().slice(-4)}`,
-        status: form.status,
-        notes,
-      },
-    ]);
-    showToast('warehouse.shared.createToast', 'info');
+    const result = recordMovement({
+      requestId: form.requestId,
+      warehouseId: selectedWarehouse.id,
+      productId: form.productId,
+      type: 'STOCK_IN',
+      quantity,
+      onHandDelta: quantity,
+      unitId: product?.baseUnitId ?? '',
+      responsibleUserId: session?.user.id ?? '',
+      relatedTransaction: `TXN-LOCAL-${Date.now().toString().slice(-4)}`,
+      notes,
+      status: 'posted',
+    });
+    if (!result.ok) {
+      showToast(inventoryErrorKeys[result.errorCode], 'critical');
+      return;
+    }
+    showToast('warehouse.inventory.recordedToast', 'info');
     closeModal();
   }
 
@@ -395,13 +427,9 @@ export function IncomingStockPage() {
           </FormField>
           <FormField labelKey="warehouse.incoming.unitField">
             <input
-              value={
-                demoUnits.find(
-                  (unit) =>
-                    unit.id ===
-                    products.find((product) => product.id === form.productId)?.baseUnitId,
-                )?.name ?? ''
-              }
+              value={unitLabel(
+                products.find((product) => product.id === form.productId)?.baseUnitId ?? '',
+              )}
               readOnly
             />
           </FormField>
@@ -412,23 +440,9 @@ export function IncomingStockPage() {
                 setForm((current) => ({ ...current, supplierId: event.target.value }))
               }
             >
-              {suppliers.map((supplier) => (
+              {selectableSuppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
-                </option>
-              ))}
-            </select>
-          </FormField>
-          <FormField labelKey="warehouse.incoming.statusField">
-            <select
-              value={form.status}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, status: event.target.value as EntityStatus }))
-              }
-            >
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {t(statusLabels[status])}
+                  {getSupplierOptionLabel(supplier, t('warehouse.suppliers.archivedSuffix'))}
                 </option>
               ))}
             </select>
@@ -444,6 +458,14 @@ export function IncomingStockPage() {
         </div>
       </Modal>
 
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={confirmSave}
+        titleKey="warehouse.inventory.confirmTitle"
+        messageKey="warehouse.inventory.confirmMessage"
+      />
+
       <Modal
         open={details !== null}
         onClose={() => setDetails(null)}
@@ -455,10 +477,7 @@ export function IncomingStockPage() {
           <div style={formGridStyle}>
             <div>
               <strong>{t('warehouse.incoming.productColumn')}</strong>
-              <p>
-                {demoProducts.find((product) => product.id === details.productId)?.name ??
-                  details.productId}
-              </p>
+              <p>{productLabel(details.productId)}</p>
             </div>
             <div>
               <strong>{t('warehouse.incoming.quantityColumn')}</strong>

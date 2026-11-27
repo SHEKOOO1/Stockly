@@ -1,6 +1,6 @@
 # Implementation Audit — Stockly
 
-Audit date: 2026-11-23; frontend addendum: 2026-11-24
+Audit date: 2026-11-23; frontend addenda through 2026-11-27
 
 ## 1. Scope and authority
 
@@ -96,8 +96,9 @@ includes concurrency and migration behaviour.
 
 ### 3.4 Frontend/PWA — MOCKED STATIC SKELETON IMPLEMENTED
 
-- `client/` contains a React + TypeScript + Vite application with 34 built Arabic RTL routes, a three-context shell, local interactions, i18n, isolated demo data, a PWA manifest and 5 passing smoke tests.
-- There is no service worker, offline write, API client, DTO contract, auth/RBAC evaluation, persistence or shared-terminal flow. All mutations are local preview state.
+- `client/` contains a React + TypeScript + Vite application with 35 built Arabic RTL routes, a three-context shell, local interactions, i18n, isolated demo data, a PWA manifest, demo-only role-aware navigation and a daily warehouse operations screen.
+- The initial skeleton verification reported 5 passing smoke tests; the latest local frontend gates pass 100 tests in 17 files, including warehouse operations and low-stock notification coverage.
+- There is no service worker, offline write, API client, DTO contract, real auth/RBAC evaluation, persistence or shared-terminal flow. Demo `roleCode` values and all mutations are local preview state.
 - Frontend production/PWA delivery remains Phase 8. The skeleton is an authorised early preview under `PROJECT_BLUEPRINT.md` §25.2 and must not be represented as a data-connected client; see `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`.
 
 ### 3.5 Deployment/CI — LOCAL REFERENCE SCAFFOLD EXISTS
@@ -127,7 +128,9 @@ includes concurrency and migration behaviour.
 | Food/recipes | BACKEND ONLY | Meal type, recipe, items and cost snapshots exist; no API or UI. Phase 6. |
 | Reports/notifications | BACKEND ONLY | Tables exist; no API, reporting engine, notification delivery or UI. Phase 7. |
 | Audit | PARTIALLY IMPLEMENTED | `AuditLog` table, mapper and collector exist; no call site drains the collector into the business transaction. |
-| Frontend/PWA/shared terminal | MOCKED STATIC SKELETON | 34 local RTL routes exist in `client/`; production PWA, auth, persistence and shared terminal remain Phase 8. |
+| Frontend/PWA/shared terminal | MOCKED STATIC SKELETON + DEMO GATE | 35 local RTL routes, demo-only role-aware navigation and a demo-only format gate exist in `client/`; production PWA, real auth/RBAC, persistence and shared-terminal enrollment remain later phases. |
+| Demo inventory operations | LOCAL DEMO ONLY | Receiving, issuing, signed adjustments and stock counts update shared in-memory balances/history; no API, ledger, idempotency, audit/outbox, FEFO or warehouse authorization. Phases 3/5. |
+| Demo warehouse operations | LOCAL DEMO ONLY | Quick quantity add/issue, Add Item with initial balance/threshold and role-targeted low-stock notifications update shared demo state; no API, permissions, tenant/warehouse authorization, audit/outbox or authoritative balance. Phases 3/5/7. |
 | Docker/Nginx/CI | REFERENCE SCAFFOLD | Local files and workflow exist; no Docker/CI execution or production target decision. Phase 8 hardening remains. |
 | ADR-0051 documentation | RATIFIED 2026-11-24 | ADR authored and `Accepted`; §6.1 of `DATABASE_DESIGN.md` and §2.1 of `SECURITY_ARCHITECTURE.md` added. ISS-08 closed. |
 | Migration/concurrency coverage | IMPLEMENTED | 4 migration and 3 concurrency tests pass against real SQL Server; ISS-10 resolved. |

@@ -11,6 +11,224 @@ recorded, even in early phases.
 
 ## [Unreleased]
 
+### Added — 2026-11-27 (demo warehouse operations)
+
+- **Demo-only warehouse operations screen.** Added `/warehouse/operations` with
+  Arabic RTL product search/status filters, low-stock indicators, quick quantity
+  add/issue, optional reason, live balance preview and an Add Item form with
+  initial balance and minimum-threshold fields.
+- **Role-aware demo navigation and notifications.** Demo users carry a `roleCode`
+  used only for local route/command/context filtering. Operators land on the daily
+  operations screen and do not receive manager/owner-targeted low-stock
+  notifications. This is UI visibility only, not RBAC evaluation.
+- **Local low-stock lifecycle.** Cross-page demo notifications are raised on a low
+  transition, deduplicated while low, resolved when stock recovers and can reopen
+  on a later low transition.
+
+### Fixed — 2026-11-27 (demo warehouse operations)
+
+- The quick quantity input is now explicitly associated with its label, fixing
+  ambiguous Arabic-label queries in component tests.
+- The worker notification test now uses a product in that worker's assigned demo
+  warehouse instead of rice from another warehouse.
+
+### Tests — 2026-11-27 (demo warehouse operations)
+
+- Added `WarehouseOperations.test.tsx` covering operator landing and management-tab
+  hiding, manager tabs, quick add propagation, overissue rejection, low-stock
+  notification dedupe/resolve/reopen, role-targeted hiding, Add Item and duplicate
+  rejection.
+- Frontend gates pass: `npm test -- --run` (**100 tests in 17 files**),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. React Router future-flag warnings are pre-existing test
+  warnings; the build emits only Vite's existing >500 kB chunk-size warning. The
+  backend suite was not re-run in this pass; recorded evidence remains 440 passed
+  / 0 failed / 0 skipped.
+
+### Added — 2026-11-27 (demo inventory operations)
+
+- **Demo-only inventory operations.** Receiving, issuing, signed adjustments and
+  stock-count reconciliation now write through one shared in-memory inventory
+  store. Completed operations create movement records and update shared stock
+  balances; balances cannot go negative; archived products are excluded from new
+  operation forms while historical movements remain readable.
+- **Shared operational views.** Product Details, Movements, Dashboard and Reports
+  now read the same movement/product state as the operation pages. Duplicate
+  local requests are rejected by request id, and Arabic feedback distinguishes
+  validation, archived-product and insufficient-stock failures.
+- **Demo-only boundary retained.** No `/api/v1/**` call, DTO contract, backend
+  authorization, persistence, service worker or offline-write capability was
+  added. Backend posting, FEFO allocation, ledger rows, count snapshots,
+  idempotency, audit and outbox behaviour remain owning Phase 3/5 work.
+
+### Fixed — 2026-11-27 (demo inventory operations)
+
+- Inventory-operation page tests now use regex selectors for Arabic labels and
+  feedback, avoiding brittle exact-string matches.
+- Stable product-label callbacks and missing `useMemo` dependencies were added in
+  warehouse pages so lint passes with zero warnings.
+
+### Tests — 2026-11-27 (demo inventory operations)
+
+- Added `demoInventoryStore.test.tsx` and `InventoryOperations.test.tsx`,
+  covering receipt propagation, overissue rejection, signed adjustments, archived
+  products, duplicate request ids, stock-count creation and shared balance
+  updates.
+- Frontend gates pass: `npm test -- --run` (**91 tests in 16 files**),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. React Router future-flag warnings are pre-existing test
+  warnings; the build emits only Vite's existing >500 kB chunk-size warning. The
+  backend suite was not re-run in this pass; recorded evidence remains 440 passed
+  / 0 failed / 0 skipped.
+
+### Added — 2026-11-27 (demo shared-terminal UX)
+
+- **Demo-only shared-terminal gate.** `DemoSessionProvider` and `TerminalGate`
+  now require an authorized active demo user plus a format-valid 6–12 digit PIN
+  preview before the shell, routes, command palette and page actions render.
+  The PIN is represented only as a masked digit count; no secret, token or PIN
+  value is stored, logged, displayed or sent anywhere.
+- **Switch-user and sign-out.** The profile menu now uses the selected demo
+  user instead of the static profile card and offers switch-user/sign-out. Both
+  clear the visible session, reset organization/warehouse context and remount
+  demo stores so the next user does not inherit local preview state.
+- **Responsive touch polish.** Terminal cards and keypad targets are sized for
+  shared touch screens; shell icon, profile and pagination controls get larger
+  minimum targets on narrow screens. Loading, invalid-PIN, offline/unavailable
+  and session-ended states use explicit Arabic feedback.
+- **PWA installability assets.** The manifest now declares stable `/` identity,
+  explicit 192px/512px PNG icons, a separate maskable SVG icon and matching HTML
+  theme metadata. There is still no service worker and no offline-write claim.
+
+### Tests — 2026-11-27 (demo shared-terminal UX)
+
+- Added gate tests for route blocking before a session, invalid PIN format,
+  no PIN storage/display, no self-registration, sign-out and switch-user.
+  Added `pwa.test.ts` for manifest, icon, RTL and viewport metadata.
+- Frontend gates pass: `npm test -- --run` (81 tests in 14 files),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. The build emits only Vite's existing >500 kB chunk-size
+  warning. The backend suite was not re-run in this pass.
+
+### Added — 2026-11-27 (supplier management completion)
+
+- **Shared demo supplier store.** `DemoSupplierStoreProvider` is wired through
+  `App.tsx` and consumed by the Suppliers page, product form, Products, Product
+  Details and Incoming views. All changes remain local React state and reset on
+  reload.
+- **Completed Suppliers page.** Local create/edit/details, search and status
+  filters, contact and lifecycle fields, derived active-product usage counts,
+  archive/restore, organization-scoped duplicate validation and Arabic
+  validation/feedback messages.
+- **Supplier helpers.** `client/src/lib/supplier.ts` centralises validation,
+  code normalisation, phone/email checks, usage-count derivation, selectability
+  rules and stable code-bearing display labels.
+- **Shared supplier references.** Product creation/editing, product lists,
+  product details and incoming movements read supplier data from the shared store.
+  Archived suppliers stay selectable only when already referenced by the product
+  being edited; existing references are retained and labelled with `(مؤرشف)`.
+- **Demo-only boundary retained.** No API call, DTO contract, persistence,
+  authentication, RBAC evaluation or backend authorization was added. Backend
+  supplier CRUD, authoritative usage/archive rules and
+  `purchasing.suppliers.read` / `purchasing.suppliers.manage` enforcement remain
+  owning-phase work.
+
+### Fixed — 2026-11-27 (supplier management completion)
+
+- Product-form supplier options now include the supplier code so renamed
+  suppliers remain identifiable in selectors and preserved references.
+- Suppliers table actions now include `showToast` in the memo dependency list;
+  lint passes with zero warnings.
+
+### Tests — 2026-11-27 (supplier management completion)
+
+- Added `supplier.test.ts`, `demoSupplierStore.test.tsx` and
+  `SuppliersPage.test.tsx`, and updated `ProductsPage.test.tsx` for code-bearing
+  supplier options. Coverage includes validation, organization-scoped duplicates,
+  derived usage counts, archive/restore, no-fetch behaviour, product-form
+  selectability, persisted product references and propagation of supplier renames
+  into product lists and details.
+- Frontend gates pass: `npm test -- --run` (71 tests in 13 files),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. The build emits only Vite's existing >500 kB chunk-size
+  warning. The backend suite was not re-run in this pass.
+
+### Added — 2026-11-27 (units of measurement completion)
+
+- **Shared demo unit store.** `DemoUnitStoreProvider` is wired through `App.tsx`
+  and consumed by the Units page, product form, Products, Product Details, Stock,
+  Expiration, Dashboard, Incoming and Outgoing views. All changes remain local
+  React state and reset on reload.
+- **Completed Units page.** Local create/edit/details, search and status filters,
+  symbol/type/decimals table, derived usage counts, archive/restore, duplicate
+  validation and Arabic validation/feedback messages.
+- **Unit helpers.** `client/src/lib/unit.ts` centralises validation, symbol
+  normalisation, derived usage counts, selectability rules, display labels and
+  unit-type translations.
+- **Shared product-form unit labels.** Product creation and editing use selectable
+  units from the shared store, including cross-warehouse seed references; archived
+  units stay selectable only when already referenced by the edited product.
+- **Demo-only boundary retained.** No API call, DTO contract, persistence,
+  authentication, RBAC evaluation or backend authorization was added. Backend
+  unit CRUD, authoritative usage rules and
+  `master.units.read` / `master.units.manage` enforcement remain owning-phase
+  work.
+
+### Fixed — 2026-11-27 (units of measurement completion)
+
+- Product-form unit options now render consistent `name (symbol)` labels with the
+  `(مؤرشف)` suffix only for archived references.
+- `DashboardPage` uses a stable unit-label callback so the movement-columns memo
+  satisfies `react-hooks/exhaustive-deps` with zero lint warnings.
+
+### Tests — 2026-11-27 (units of measurement completion)
+
+- Added `unit.test.ts`, `demoUnitStore.test.tsx` and `UnitsPage.test.tsx` covering
+  validation, symbol normalisation, derived usage counts, archive guards,
+  cross-page shared-store behaviour, product-form selectability and no-fetch
+  behaviour.
+- Frontend gates pass: `npm test -- --run` (58 tests in 10 files),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. The build emits only Vite's existing >500 kB chunk-size
+  warning. The backend suite was not re-run in this pass.
+
+### Added — 2026-11-27 (category management completion)
+
+- **Shared demo category store.** `DemoCategoryStoreProvider` is wired through
+  `App.tsx` and consumed by Categories, Products, Product Details, Overview,
+  Stock and Expiration pages. All changes remain local React state and reset on
+  reload.
+- **Completed Categories page.** Local create/edit/details, search and status
+  filters, hierarchical table, derived active-product counts, archive/restore,
+  parent selection rules and Arabic validation/feedback messages.
+- **Category helpers.** `client/src/lib/category.ts` now centralises validation,
+  code normalisation, descendant-cycle checks, defensive tree flattening,
+  display labels and product-count derivation.
+- **Demo-only boundary retained.** No API call, DTO contract, persistence,
+  authentication, RBAC evaluation or backend authorization was added. Backend
+  category CRUD, authoritative counts and
+  `master.categories.read` / `master.categories.manage` enforcement remain
+  owning-phase work.
+
+### Fixed — 2026-11-27 (category management completion)
+
+- Restored corrupted Arabic category seed names and category UI translations that
+  had been replaced with `?` characters; added explicit Arabic validation and
+  archive messages.
+- Product-count tests now assert that restoring a newly added demo product keeps
+  its contribution to the derived count.
+
+### Tests — 2026-11-27 (category management completion)
+
+- Added `demoCategoryStore.test.tsx`, `category.test.ts` and
+  `CategoriesPage.test.tsx` covering store CRUD, derived counts, validation,
+  hierarchy safety, defensive flattening, archive/restore, cross-page category
+  availability and no-fetch behaviour.
+- Frontend gates pass: `npm test -- --run` (42 tests in 7 files),
+  `npm run format:check`, `npm run typecheck`, `npm run lint` and
+  `npm run build`. The build emits only Vite's existing >500 kB chunk-size
+  warning. The backend suite was not re-run in this pass.
+
 ### Added — 2026-11-24 (initial frontend skeleton)
 
 - **`client/` React + TypeScript + Vite frontend skeleton.** Implements 34

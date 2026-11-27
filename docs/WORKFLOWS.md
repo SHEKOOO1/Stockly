@@ -5,7 +5,7 @@
 | Document | `WORKFLOWS.md` |
 | Version | 1.1.0 |
 | Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
-| Last updated | 2026-09-30 |
+| Last updated | 2026-11-27 — demo-only frontend implementation note; workflow contract unchanged |
 | Related | `BUSINESS_RULES.md`, `API_CONVENTIONS.md`, `ROLES_PERMISSIONS.md` |
 
 Each workflow lists: actor, preconditions, permission, steps (API), invariants,
@@ -17,6 +17,16 @@ the finest stock scope and no workflow accepts a location/bin (ADR-0045); all
 money is in the tenant's single currency with no conversion step (ADR-0046);
 transfers are instantaneous and single-transaction (ADR-0047); planning never
 reserves stock (ADR-0050).
+
+**Demo-only frontend note (2026-11-27).** `client/` contains an in-memory preview
+of receiving, manual stock-in/issue, adjustments, stock counts and a daily
+warehouse operations screen with quick quantity changes in §§4–10. It uses shared
+local React state and Arabic user feedback, and demo users carry a `roleCode` for
+local visibility only. It is not an implementation of the API contracts,
+permissions, tenant/warehouse checks, FEFO allocation, count cutoff, immutable
+ledger, idempotency, audit or outbox rules below. Demo role-targeted low-stock
+notifications are UI state, not RBAC evaluation. No backend workflow, endpoint,
+permission, invariant or failure contract was changed by that preview.
 
 ---
 

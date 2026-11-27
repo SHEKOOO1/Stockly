@@ -1,12 +1,31 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
-import { demoProfile } from '@/data/demoData';
+import { useDemoSession } from '@/context/DemoSessionContext';
+import { demoOrganizations, demoWarehouses } from '@/data/demoData';
 import { t } from '@/i18n';
 
 export function ProfileMenu() {
   const { profileMenuOpen, toggleProfileMenu, setProfileMenuOpen } = useApp();
+  const { session, switchUser, signOut } = useDemoSession();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const organizationNames = useMemo(
+    () =>
+      session?.user.organizationIds
+        .map((id) => demoOrganizations.find((organization) => organization.id === id)?.name)
+        .filter(Boolean)
+        .join('، ') ?? '',
+    [session],
+  );
+  const warehouseNames = useMemo(
+    () =>
+      session?.user.warehouseIds
+        .map((id) => demoWarehouses.find((warehouse) => warehouse.id === id)?.name)
+        .filter(Boolean)
+        .join('، ') ?? '',
+    [session],
+  );
 
   useEffect(() => {
     if (!profileMenuOpen) {
@@ -21,6 +40,10 @@ export function ProfileMenu() {
     return () => document.removeEventListener('mousedown', handlePointerDown);
   }, [profileMenuOpen, setProfileMenuOpen]);
 
+  if (!session) {
+    return null;
+  }
+
   return (
     <div className="topbar-menu" ref={containerRef}>
       <button
@@ -31,9 +54,9 @@ export function ProfileMenu() {
         aria-expanded={profileMenuOpen}
       >
         <span className="profile-trigger__avatar" dir="ltr" aria-hidden="true">
-          {demoProfile.name.slice(0, 1)}
+          {session.user.name.slice(0, 1)}
         </span>
-        <span className="profile-trigger__name">{demoProfile.name}</span>
+        <span className="profile-trigger__name">{session.user.name}</span>
       </button>
       {profileMenuOpen ? (
         <div className="menu-panel menu-panel--profile">
@@ -43,22 +66,26 @@ export function ProfileMenu() {
           <div className="menu-panel__body">
             <div className="profile-summary">
               <span className="profile-summary__avatar" dir="ltr" aria-hidden="true">
-                {demoProfile.name.slice(0, 1)}
+                {session.user.name.slice(0, 1)}
               </span>
               <div>
-                <strong>{demoProfile.name}</strong>
+                <strong>{session.user.name}</strong>
                 <span>
-                  {t('common.profile.role')}: {demoProfile.roleLabel}
+                  {t('common.profile.role')}: {session.user.role}
                 </span>
               </div>
             </div>
             <div className="profile-detail">
               <span>{t('common.context.organization')}</span>
-              <strong>{demoProfile.organizationName}</strong>
+              <strong>{organizationNames}</strong>
             </div>
             <div className="profile-detail">
               <span>{t('common.context.warehouse')}</span>
-              <strong>{demoProfile.warehouseName}</strong>
+              <strong>{warehouseNames}</strong>
+            </div>
+            <div className="profile-detail">
+              <span>{t('common.profile.currentSession')}</span>
+              <strong>{t('common.demo.previewOnly')}</strong>
             </div>
             <Link
               to="/organization/profile"
@@ -67,6 +94,12 @@ export function ProfileMenu() {
             >
               {t('organization.profile.title')}
             </Link>
+            <button type="button" className="menu-link menu-link--button" onClick={switchUser}>
+              {t('common.profile.switchUser')}
+            </button>
+            <button type="button" className="menu-link menu-link--button" onClick={signOut}>
+              {t('common.profile.signOut')}
+            </button>
           </div>
           <div className="menu-panel__footer">{t('common.profile.demoIdentity')}</div>
         </div>
@@ -74,3 +107,5 @@ export function ProfileMenu() {
     </div>
   );
 }
+
+export default ProfileMenu;

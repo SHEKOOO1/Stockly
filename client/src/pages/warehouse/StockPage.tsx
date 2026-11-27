@@ -13,9 +13,12 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoCategories, demoUnits } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
 import { useDemoProductStore } from '@/data/demoProductStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
+import { getCategoryDisplayName } from '@/lib/category';
+import { getUnitDisplayName } from '@/lib/unit';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { ProductSummary } from '@/lib/product';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -54,15 +57,21 @@ const stockTones: Record<ProductStockStatus, StatusTone> = {
 export function StockOverviewPage() {
   const { selectedWarehouse } = useApp();
   const { productSummaries } = useDemoProductStore();
+  const { getCategorySummaries } = useDemoCategoryStore();
+  const { units } = useDemoUnitStore();
   const loader = useDemoLoader(productSummaries);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProductStockStatus | ''>('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [details, setDetails] = useState<ProductSummary | null>(null);
 
+  const categorySummaries = useMemo(
+    () => getCategorySummaries(selectedWarehouse.id),
+    [getCategorySummaries, selectedWarehouse.id],
+  );
   const categories = useMemo(
-    () => demoCategories.filter((category) => category.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+    () => categorySummaries.map((row) => row.category),
+    [categorySummaries],
   );
 
   const rows = useMemo(
@@ -107,17 +116,22 @@ export function StockOverviewPage() {
       id: 'category',
       headerKey: 'warehouse.stock.categoryColumn',
       cell: (row) =>
-        demoCategories.find((category) => category.id === row.product.categoryId)?.name ??
-        row.product.categoryId ??
-        t('warehouse.products.noCategory'),
+        getCategoryDisplayName(
+          categories.find((category) => category.id === row.product.categoryId),
+          t('warehouse.products.noCategory'),
+          t('warehouse.shared.archivedCategorySuffix'),
+        ),
       sortValue: (row) => row.product.categoryId ?? '',
     },
     {
       id: 'unit',
       headerKey: 'warehouse.stock.unitColumn',
       cell: (row) =>
-        demoUnits.find((unit) => unit.id === row.product.baseUnitId)?.code ??
-        row.product.baseUnitId,
+        getUnitDisplayName(
+          units.find((unit) => unit.id === row.product.baseUnitId),
+          row.product.baseUnitId,
+          t('warehouse.shared.archivedUnitSuffix'),
+        ),
     },
     {
       id: 'quantity',
@@ -228,11 +242,13 @@ export function StockOverviewPage() {
                 style={filterSelectStyle}
               >
                 <option value="">{t('common.labels.all')}</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
+                {categorySummaries
+                  .filter((r) => !r.category.isDeleted)
+                  .map((r) => (
+                    <option key={r.category.id} value={r.category.id}>
+                      {r.category.name}
+                    </option>
+                  ))}
               </select>
             </>
           }

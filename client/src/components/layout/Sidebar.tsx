@@ -2,17 +2,16 @@ import { Boxes, X } from 'lucide-react';
 import { useEffect, useMemo, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import { t, type TranslationKey } from '@/i18n';
+import { visibleNavigationForUser, visibleScopesForUser } from '@/lib/demoAccess';
 import { useMediaQuery } from '@/lib/useMediaQuery';
-import { contextLabelKey, contextRootPath, navigation, type NavigationItem } from '@/navigation';
-import type { AppContextScope } from '@/types/domain';
+import { contextLabelKey, contextRootPath, type NavigationItem } from '@/navigation';
 
 interface NavigationGroup {
   groupKey: TranslationKey;
   items: NavigationItem[];
 }
-
-const scopeOrder: AppContextScope[] = ['platform', 'organization', 'warehouse'];
 
 export function Sidebar() {
   const {
@@ -23,13 +22,19 @@ export function Sidebar() {
     selectedWarehouse,
     sidebarCollapsed,
   } = useApp();
+  const { session } = useDemoSession();
   const sidebarRef = useRef<HTMLElement>(null);
   const isMobile = useMediaQuery('(max-width: 960px)');
   const drawerHidden = isMobile && !mobileNavOpen;
+  const visibleScopes = useMemo(
+    () => (session ? visibleScopesForUser(session.user) : []),
+    [session],
+  );
 
   const groups = useMemo<NavigationGroup[]>(() => {
     const result: NavigationGroup[] = [];
-    for (const item of navigation[activeScope]) {
+    const items = session ? visibleNavigationForUser(activeScope, session.user) : [];
+    for (const item of items) {
       const existing = result.find((group) => group.groupKey === item.groupKey);
       if (existing) {
         existing.items.push(item);
@@ -38,7 +43,7 @@ export function Sidebar() {
       }
     }
     return result;
-  }, [activeScope]);
+  }, [activeScope, session]);
 
   useEffect(() => {
     if (!mobileNavOpen) {
@@ -110,7 +115,7 @@ export function Sidebar() {
         </div>
 
         <div className="sidebar__contexts" aria-label={t('common.context.current')}>
-          {scopeOrder.map((scope) => (
+          {visibleScopes.map((scope) => (
             <NavLink
               key={scope}
               to={contextRootPath(scope)}

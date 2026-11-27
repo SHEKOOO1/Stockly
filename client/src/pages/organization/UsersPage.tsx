@@ -229,6 +229,7 @@ export function OrganizationUsersPage() {
       id: `user-preview-${users.length + 1}`,
       name: inviteForm.name.trim(),
       role: inviteForm.roleName,
+      roleCode: scopedRoles.find((role) => role.name === inviteForm.roleName)?.code ?? 'Worker',
       email: inviteForm.email.trim(),
       organizationIds: [selectedOrganization.id],
       warehouseIds: [inviteForm.warehouseId],

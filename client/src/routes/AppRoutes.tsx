@@ -1,4 +1,6 @@
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { useEffect, type ReactNode } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import PlatformActivityPage from '@/pages/platform/ActivityPage';
 import OrganizationAdministratorsPage from '@/pages/platform/OrganizationAdministratorsPage';
 import OrganizationDetailsPage from '@/pages/platform/OrganizationDetailsPage';
@@ -33,53 +35,79 @@ import WarehouseSettingsPage from '@/pages/warehouse/SettingsPage';
 import StockOverviewPage from '@/pages/warehouse/StockPage';
 import SuppliersPage from '@/pages/warehouse/SuppliersPage';
 import UnitsPage from '@/pages/warehouse/UnitsPage';
+import WarehouseOperationsPage from '@/pages/warehouse/WarehouseOperationsPage';
+import { canAccessPath, landingPathForUser } from '@/lib/demoAccess';
+
+function RouteAccess({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
+  const { session } = useDemoSession();
+  const allowed = session ? canAccessPath(pathname, session.user) : false;
+
+  useEffect(() => {
+    if (!allowed && session) {
+      navigate(landingPathForUser(session.user), { replace: true });
+    }
+  }, [allowed, navigate, session]);
+
+  if (!allowed) {
+    return null;
+  }
+  return <>{children}</>;
+}
 
 export function AppRoutes() {
+  const { session } = useDemoSession();
+  const landingPath = session ? landingPathForUser(session.user) : '/platform';
+
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/platform" replace />} />
-      <Route path="/platform" element={<PlatformDashboardPage />} />
-      <Route path="/platform/organizations" element={<OrganizationsPage />} />
-      <Route path="/platform/organizations/new" element={<CreateOrganizationPage />} />
-      <Route path="/platform/organizations/:id" element={<OrganizationDetailsPage />} />
-      <Route
-        path="/platform/organizations/:id/administrators"
-        element={<OrganizationAdministratorsPage />}
-      />
-      <Route path="/platform/subscriptions" element={<SubscriptionsPage />} />
-      <Route path="/platform/settings" element={<PlatformSettingsPage />} />
-      <Route path="/platform/activity" element={<PlatformActivityPage />} />
+    <RouteAccess>
+      <Routes>
+        <Route path="/" element={<Navigate to={landingPath} replace />} />
+        <Route path="/platform" element={<PlatformDashboardPage />} />
+        <Route path="/platform/organizations" element={<OrganizationsPage />} />
+        <Route path="/platform/organizations/new" element={<CreateOrganizationPage />} />
+        <Route path="/platform/organizations/:id" element={<OrganizationDetailsPage />} />
+        <Route
+          path="/platform/organizations/:id/administrators"
+          element={<OrganizationAdministratorsPage />}
+        />
+        <Route path="/platform/subscriptions" element={<SubscriptionsPage />} />
+        <Route path="/platform/settings" element={<PlatformSettingsPage />} />
+        <Route path="/platform/activity" element={<PlatformActivityPage />} />
 
-      <Route path="/organization" element={<OrganizationDashboardPage />} />
-      <Route path="/organization/profile" element={<OrganizationProfilePage />} />
-      <Route path="/organization/users" element={<OrganizationUsersPage />} />
-      <Route path="/organization/roles" element={<RolesPermissionsPage />} />
-      <Route path="/organization/warehouses" element={<WarehousesPage />} />
-      <Route path="/organization/warehouses/new" element={<CreateWarehousePage />} />
-      <Route path="/organization/activity" element={<OrganizationActivityPage />} />
-      <Route path="/organization/settings" element={<OrganizationSettingsPage />} />
+        <Route path="/organization" element={<OrganizationDashboardPage />} />
+        <Route path="/organization/profile" element={<OrganizationProfilePage />} />
+        <Route path="/organization/users" element={<OrganizationUsersPage />} />
+        <Route path="/organization/roles" element={<RolesPermissionsPage />} />
+        <Route path="/organization/warehouses" element={<WarehousesPage />} />
+        <Route path="/organization/warehouses/new" element={<CreateWarehousePage />} />
+        <Route path="/organization/activity" element={<OrganizationActivityPage />} />
+        <Route path="/organization/settings" element={<OrganizationSettingsPage />} />
 
-      <Route path="/warehouse" element={<WarehouseDashboardPage />} />
-      <Route path="/warehouse/overview" element={<OverviewPage />} />
-      <Route path="/warehouse/products" element={<ProductsPage />} />
-      <Route path="/warehouse/products/:id" element={<ProductDetailsPage />} />
-      <Route path="/warehouse/categories" element={<CategoriesPage />} />
-      <Route path="/warehouse/units" element={<UnitsPage />} />
-      <Route path="/warehouse/suppliers" element={<SuppliersPage />} />
-      <Route path="/warehouse/stock" element={<StockOverviewPage />} />
-      <Route path="/warehouse/incoming" element={<IncomingStockPage />} />
-      <Route path="/warehouse/outgoing" element={<OutgoingStockPage />} />
-      <Route path="/warehouse/movements" element={<StockMovementsPage />} />
-      <Route path="/warehouse/adjustments" element={<InventoryAdjustmentsPage />} />
-      <Route path="/warehouse/stocktaking" element={<StocktakingPage />} />
-      <Route path="/warehouse/alerts" element={<LowStockAlertsPage />} />
-      <Route path="/warehouse/expiration" element={<ExpirationTrackingPage />} />
-      <Route path="/warehouse/reports" element={<ReportsPage />} />
-      <Route path="/warehouse/employees" element={<WarehouseEmployeesPage />} />
-      <Route path="/warehouse/settings" element={<WarehouseSettingsPage />} />
+        <Route path="/warehouse" element={<WarehouseDashboardPage />} />
+        <Route path="/warehouse/operations" element={<WarehouseOperationsPage />} />
+        <Route path="/warehouse/overview" element={<OverviewPage />} />
+        <Route path="/warehouse/products" element={<ProductsPage />} />
+        <Route path="/warehouse/products/:id" element={<ProductDetailsPage />} />
+        <Route path="/warehouse/categories" element={<CategoriesPage />} />
+        <Route path="/warehouse/units" element={<UnitsPage />} />
+        <Route path="/warehouse/suppliers" element={<SuppliersPage />} />
+        <Route path="/warehouse/stock" element={<StockOverviewPage />} />
+        <Route path="/warehouse/incoming" element={<IncomingStockPage />} />
+        <Route path="/warehouse/outgoing" element={<OutgoingStockPage />} />
+        <Route path="/warehouse/movements" element={<StockMovementsPage />} />
+        <Route path="/warehouse/adjustments" element={<InventoryAdjustmentsPage />} />
+        <Route path="/warehouse/stocktaking" element={<StocktakingPage />} />
+        <Route path="/warehouse/alerts" element={<LowStockAlertsPage />} />
+        <Route path="/warehouse/expiration" element={<ExpirationTrackingPage />} />
+        <Route path="/warehouse/reports" element={<ReportsPage />} />
+        <Route path="/warehouse/employees" element={<WarehouseEmployeesPage />} />
+        <Route path="/warehouse/settings" element={<WarehouseSettingsPage />} />
 
-      <Route path="*" element={<Navigate to="/platform" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to={landingPath} replace />} />
+      </Routes>
+    </RouteAccess>
   );
 }
 

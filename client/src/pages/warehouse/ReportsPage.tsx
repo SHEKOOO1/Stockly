@@ -12,7 +12,8 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoAlerts, demoMovements } from '@/data/demoData';
+import { demoAlerts } from '@/data/demoData';
+import { useDemoInventoryStore } from '@/data/demoInventoryStore';
 import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatNumber } from '@/lib/format';
@@ -108,6 +109,7 @@ const movementLabels: Record<string, TranslationKey> = {
 export function ReportsPage() {
   const { selectedWarehouse, showToast } = useApp();
   const { productSummaries } = useDemoProductStore();
+  const { movements: allMovements } = useDemoInventoryStore();
   const [selectedReport, setSelectedReport] = useState<ReportId>('inventory');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -122,7 +124,7 @@ export function ReportsPage() {
     const products = productSummaries.filter(
       (summary) => summary.product.warehouseId === selectedWarehouse.id,
     );
-    const movements = demoMovements.filter(
+    const movements = allMovements.filter(
       (movement) =>
         movement.warehouseId === selectedWarehouse.id &&
         (dateFrom === '' || movement.occurredAt.slice(0, 10) >= dateFrom) &&
@@ -228,7 +230,7 @@ export function ReportsPage() {
             : ('info' as StatusTone),
       })),
     };
-  }, [productSummaries, selectedReport, selectedWarehouse.id, dateFrom, dateTo]);
+  }, [productSummaries, allMovements, selectedReport, selectedWarehouse.id, dateFrom, dateTo]);
 
   const columns: DataTableColumn<PreviewRow>[] = [
     {

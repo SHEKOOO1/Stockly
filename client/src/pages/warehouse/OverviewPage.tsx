@@ -14,7 +14,8 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoActivities, demoAlerts, demoCategories, demoProducts } from '@/data/demoData';
+import { demoActivities, demoAlerts } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
 import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
@@ -62,6 +63,7 @@ const entityStatusLabels: Record<EntityStatus, TranslationKey> = {
 export function OverviewPage() {
   const { selectedWarehouse } = useApp();
   const { productSummaries } = useDemoProductStore();
+  const { getCategorySummaries } = useDemoCategoryStore();
   const productsLoader = useDemoLoader(productSummaries, { delayMs: 190 });
   const activityLoader = useDemoLoader(demoActivities, { delayMs: 240 });
   const alertsLoader = useDemoLoader(demoAlerts, { delayMs: 210 });
@@ -72,9 +74,9 @@ export function OverviewPage() {
     [productSummaries, selectedWarehouse.id],
   );
 
-  const categories = useMemo(
-    () => demoCategories.filter((category) => category.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+  const categorySummaries = useMemo(
+    () => getCategorySummaries(selectedWarehouse.id).filter((row) => !row.category.isDeleted),
+    [getCategorySummaries, selectedWarehouse.id],
   );
 
   const warehouseAlerts = useMemo(
@@ -97,13 +99,13 @@ export function OverviewPage() {
 
   const categoryMix = useMemo<ChartPoint[]>(
     () =>
-      categories.map((category) => ({
-        id: category.id,
-        label: category.name,
-        value: products.filter((summary) => summary.product.categoryId === category.id).length,
+      categorySummaries.map((row) => ({
+        id: row.category.id,
+        label: row.category.name,
+        value: row.productCount,
         tone: 'info',
       })),
-    [categories, products],
+    [categorySummaries],
   );
 
   const activityColumns = useMemo<DataTableColumn<ActivityRecord>[]>(
@@ -148,9 +150,11 @@ export function OverviewPage() {
         id: 'product',
         headerKey: 'common.labels.product',
         cell: (row) =>
-          demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId,
+          productSummaries.find((summary) => summary.product.id === row.productId)?.product.name ??
+          row.productId,
         sortValue: (row) =>
-          demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId,
+          productSummaries.find((summary) => summary.product.id === row.productId)?.product.name ??
+          row.productId,
       },
       {
         id: 'severity',
@@ -170,7 +174,7 @@ export function OverviewPage() {
         ltr: true,
       },
     ],
-    [],
+    [productSummaries],
   );
 
   const isLoading =
@@ -207,7 +211,7 @@ export function OverviewPage() {
         />
         <StatCard
           labelKey="warehouse.overview.categoriesKpi"
-          value={formatNumber(categories.length)}
+          value={formatNumber(categorySummaries.length)}
           hintKey="warehouse.products.categoryFilter"
           icon={Tags}
           tone="info"

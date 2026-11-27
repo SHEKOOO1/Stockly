@@ -1,5 +1,5 @@
 import { Boxes, CalendarClock, Package, TriangleAlert } from 'lucide-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   BarChart,
   ChartCard,
@@ -14,10 +14,12 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoMovements, demoProducts, demoUnits } from '@/data/demoData';
+import { useDemoInventoryStore } from '@/data/demoInventoryStore';
 import { useDemoProductStore } from '@/data/demoProductStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { useDemoLoader } from '@/lib/useDemoLoader';
 import type { ProductSummary } from '@/lib/product';
 import type { ChartPoint, InventoryMovement, MovementType, StatusTone } from '@/types/domain';
@@ -54,9 +56,11 @@ const movementTones: Record<MovementType, StatusTone> = {
 
 export function WarehouseDashboardPage() {
   const { selectedWarehouse } = useApp();
-  const { productSummaries } = useDemoProductStore();
+  const { productSummaries, products: allProducts } = useDemoProductStore();
+  const { movements: allMovements } = useDemoInventoryStore();
+  const { units } = useDemoUnitStore();
   const productsLoader = useDemoLoader(productSummaries, { delayMs: 180 });
-  const movementsLoader = useDemoLoader(demoMovements, { delayMs: 220 });
+  const movementsLoader = useDemoLoader(allMovements, { delayMs: 220 });
 
   const products = useMemo<ProductSummary[]>(
     () =>
@@ -65,8 +69,8 @@ export function WarehouseDashboardPage() {
   );
 
   const movements = useMemo(
-    () => demoMovements.filter((movement) => movement.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+    () => allMovements.filter((movement) => movement.warehouseId === selectedWarehouse.id),
+    [allMovements, selectedWarehouse.id],
   );
 
   const incoming = useMemo(
@@ -77,6 +81,14 @@ export function WarehouseDashboardPage() {
   const outgoing = useMemo(
     () => movements.filter((movement) => movement.type === 'STOCK_OUT').slice(0, 5),
     [movements],
+  );
+
+  const unitLabel = useCallback(
+    (unitId: string) => {
+      const unit = units.find((item) => item.id === unitId);
+      return unit ? getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix')) : '';
+    },
+    [units],
   );
 
   const summary = useMemo<ChartPoint[]>(() => {
@@ -102,19 +114,18 @@ export function WarehouseDashboardPage() {
         headerKey: 'common.labels.product',
         cell: (row) => (
           <strong>
-            {demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
+            {allProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
           </strong>
         ),
         sortValue: (row) =>
-          demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId,
+          allProducts.find((product) => product.id === row.productId)?.name ?? row.productId,
       },
       {
         id: 'quantity',
         headerKey: 'common.labels.quantity',
         cell: (row) => (
           <span dir="ltr">
-            {formatNumber(row.quantity)}{' '}
-            {demoUnits.find((unit) => unit.id === row.unitId)?.code ?? ''}
+            {formatNumber(row.quantity)} {unitLabel(row.unitId)}
           </span>
         ),
         sortValue: (row) => row.quantity,
@@ -135,7 +146,7 @@ export function WarehouseDashboardPage() {
         ltr: true,
       },
     ],
-    [],
+    [allProducts, unitLabel],
   );
 
   const isLoading = productsLoader.status === 'loading' || movementsLoader.status === 'loading';

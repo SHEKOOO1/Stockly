@@ -1,6 +1,6 @@
 # Backend API Contract Gaps — Stockly
 
-Status date: 2026-11-24
+Status date: 2026-11-27
 
 ## 1. Purpose
 
@@ -119,6 +119,13 @@ phase implements each area. They are not active policy declarations.
 | Movement metadata route conflict | `API_CONVENTIONS.md` uses `/inventory/movements/meta`; `WORKFLOWS.md` uses `/inventory/stock-documents/{id}/reverse` while `API_CONVENTIONS.md` uses `/inventory/documents/{id}/reverse` | Movement permissions | Path set requires normalisation before Phase 3/5 implementation |
 | Reservations | None in V1 | `inventory.reservations.manage` is seeded to nobody | Correctly absent; TBD-26/ADR-0050 forbids inventing V1 reservation endpoints |
 
+The `client/` demo inventory store and warehouse operations screen added on
+2026-11-27 do not change these gaps. They have local in-memory receipts, issues,
+adjustments, counts and quick quantity changes only; they do not expose the
+intended routes, permissions, DTOs, idempotency keys, guarded database updates,
+immutable ledger, audit or outbox behaviour. Demo `roleCode` values and
+role-targeted notifications are visibility state only, not RBAC evaluation.
+
 ### 4.6 Purchasing
 
 | Area | Intended routes | Intended permission source | Gap |
@@ -167,4 +174,4 @@ phase implements each area. They are not active policy declarations.
 | Cross-cutting headers and RFC 9457 body shape | Implemented at host level |
 | Health/liveness/readiness | Liveness and outbox-aware readiness implemented; no business outbox producer exists |
 | Swagger UI | Not implemented; deliberate package/security choice |
-| Frontend/PWA | Mocked/static skeleton exists under `client/`; production PWA and shared terminal remain Phase 8 |
+| Frontend/PWA | Mocked/static skeleton with demo-only shared-terminal gate and role-aware navigation exists under `client/`; production PWA, real shared-terminal auth, enrollment and RBAC evaluation remain Phase 2/4/8 |

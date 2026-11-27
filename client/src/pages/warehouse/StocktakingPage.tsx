@@ -1,10 +1,11 @@
-import { ClipboardList, Eye, ShieldCheck } from 'lucide-react';
+import { ClipboardList, Eye, Plus, ShieldCheck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   ConfirmDialog,
   DataTable,
   DemoNotice,
   ErrorState,
+  FormField,
   LoadingState,
   Modal,
   PageHeader,
@@ -14,7 +15,13 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoStocktakingSessions } from '@/data/demoData';
+import { useDemoSession } from '@/context/DemoSessionContext';
+import {
+  inventoryErrorKeys,
+  makeInventoryRequestId,
+  useDemoInventoryStore,
+} from '@/data/demoInventoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -62,29 +69,63 @@ const statusTones: Record<EntityStatus, StatusTone> = {
   confirmed: 'healthy',
 };
 
+interface CountFormState {
+  productId: string;
+  countedQuantity: string;
+  notes: string;
+  requestId: string;
+}
+
 export function StocktakingPage() {
   const { selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoStocktakingSessions);
-  const [localSessions, setLocalSessions] =
-    useState<readonly StocktakingSession[]>(demoStocktakingSessions);
+  const { session } = useDemoSession();
+  const { products: allProducts, getProductSummary } = useDemoProductStore();
+  const { stocktakingSessions, recordStockCount, confirmStocktakingSession } =
+    useDemoInventoryStore();
+  const loader = useDemoLoader(stocktakingSessions);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
   const [details, setDetails] = useState<StocktakingSession | null>(null);
   const [reviewing, setReviewing] = useState<StocktakingSession | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [form, setForm] = useState<CountFormState>({
+    productId: '',
+    countedQuantity: '0',
+    notes: '',
+    requestId: '',
+  });
+  const [productError, setProductError] = useState(false);
+  const [quantityError, setQuantityError] = useState(false);
+
+  const products = useMemo(
+    () =>
+      allProducts.filter(
+        (product) =>
+          product.warehouseId === selectedWarehouse.id && !product.isDeleted && product.isActive,
+      ),
+    [allProducts, selectedWarehouse.id],
+  );
+
+  const selectedProduct = products.find((product) => product.id === form.productId);
+  const expectedQuantity = selectedProduct ? getProductSummary(selectedProduct).onHandQuantity : 0;
+  const countedQuantity = Number(form.countedQuantity);
+  const difference = Number.isFinite(countedQuantity) ? countedQuantity - expectedQuantity : 0;
 
   const rows = useMemo(
     () =>
-      localSessions
-        .filter((session) => session.warehouseId === selectedWarehouse.id)
+      stocktakingSessions
+        .filter((stocktakingSession) => stocktakingSession.warehouseId === selectedWarehouse.id)
         .sort((left, right) => right.startedAt.localeCompare(left.startedAt)),
-    [localSessions, selectedWarehouse.id],
+    [stocktakingSessions, selectedWarehouse.id],
   );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
-    return rows.filter((session) => {
-      const matchesSearch = needle === '' || session.code.toLocaleLowerCase().includes(needle);
-      const matchesStatus = statusFilter === '' || session.status === statusFilter;
+    return rows.filter((stocktakingSession) => {
+      const matchesSearch =
+        needle === '' || stocktakingSession.code.toLocaleLowerCase().includes(needle);
+      const matchesStatus = statusFilter === '' || stocktakingSession.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [rows, search, statusFilter]);
@@ -92,10 +133,10 @@ export function StocktakingPage() {
   const totals = useMemo(
     () =>
       rows.reduce(
-        (acc, session) => ({
-          expected: acc.expected + session.expectedLines,
-          counted: acc.counted + session.countedLines,
-          differences: acc.differences + session.differenceLines,
+        (acc, stocktakingSession) => ({
+          expected: acc.expected + stocktakingSession.expectedLines,
+          counted: acc.counted + stocktakingSession.countedLines,
+          differences: acc.differences + stocktakingSession.differenceLines,
         }),
         { expected: 0, counted: 0, differences: 0 },
       ),
@@ -181,15 +222,60 @@ export function StocktakingPage() {
     setStatusFilter('');
   }
 
+  function openAdd() {
+    setAdding(true);
+    setForm({
+      productId: products[0]?.id ?? '',
+      countedQuantity: String(products[0] ? getProductSummary(products[0]).onHandQuantity : 0),
+      notes: '',
+      requestId: makeInventoryRequestId('count'),
+    });
+    setProductError(false);
+    setQuantityError(false);
+  }
+
+  function closeModal() {
+    setAdding(false);
+    setConfirming(false);
+    setProductError(false);
+    setQuantityError(false);
+  }
+
+  function saveForm() {
+    const quantityValid =
+      form.countedQuantity.trim() !== '' &&
+      Number.isInteger(countedQuantity) &&
+      countedQuantity >= 0;
+    setProductError(form.productId === '');
+    setQuantityError(!quantityValid);
+    if (form.productId === '' || !quantityValid) {
+      return;
+    }
+    setConfirming(true);
+  }
+
+  function confirmSave() {
+    const result = recordStockCount({
+      requestId: form.requestId,
+      warehouseId: selectedWarehouse.id,
+      productId: form.productId,
+      countedQuantity,
+      responsibleUserId: session?.user.id ?? '',
+      notes: form.notes.trim(),
+    });
+    if (!result.ok) {
+      showToast(inventoryErrorKeys[result.errorCode], 'critical');
+      return;
+    }
+    showToast('warehouse.inventory.countRecordedToast', 'info');
+    closeModal();
+  }
+
   function confirmReview() {
     if (!reviewing) {
       return;
     }
-    setLocalSessions((current) =>
-      current.map((session) =>
-        session.id === reviewing.id ? { ...session, status: 'confirmed' } : session,
-      ),
-    );
+    confirmStocktakingSession(reviewing.id);
     showToast('warehouse.shared.confirmToast', 'info');
     setReviewing(null);
   }
@@ -204,6 +290,10 @@ export function StocktakingPage() {
           <>
             <span className="status-badge status-badge--info">{selectedWarehouse.name}</span>
             <span className="demo-badge">{t('common.demo.previewOnly')}</span>
+            <button type="button" className="button button--primary button--sm" onClick={openAdd}>
+              <Plus size={14} aria-hidden="true" />
+              {t('warehouse.inventory.newCount')}
+            </button>
           </>
         }
       />
@@ -269,6 +359,84 @@ export function StocktakingPage() {
           emptyMessageKey="warehouse.shared.emptyRows"
         />
       )}
+
+      <Modal
+        open={adding}
+        onClose={closeModal}
+        titleKey="warehouse.inventory.newCountTitle"
+        descriptionKey="warehouse.shared.formDescription"
+        footer={
+          <>
+            <button type="button" className="button button--quiet" onClick={closeModal}>
+              {t('common.actions.cancel')}
+            </button>
+            <button type="button" className="button button--primary" onClick={saveForm}>
+              {t('warehouse.shared.savePreview')}
+            </button>
+          </>
+        }
+      >
+        <div style={detailGridStyle}>
+          <FormField
+            labelKey="warehouse.inventory.countProductField"
+            required
+            errorKey={productError ? 'common.form.fieldRequired' : undefined}
+          >
+            <select
+              value={form.productId}
+              onChange={(event) => {
+                setForm((current) => ({ ...current, productId: event.target.value }));
+                setProductError(false);
+              }}
+            >
+              {products.map((product) => (
+                <option key={product.id} value={product.id}>
+                  {product.name}
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField labelKey="warehouse.inventory.expectedQuantityField">
+            <input value={formatNumber(expectedQuantity)} dir="ltr" readOnly />
+          </FormField>
+          <FormField
+            labelKey="warehouse.inventory.countedQuantityField"
+            required
+            errorKey={quantityError ? 'common.form.invalidNumber' : undefined}
+          >
+            <input
+              type="number"
+              min="0"
+              step="1"
+              dir="ltr"
+              value={form.countedQuantity}
+              onChange={(event) => {
+                setForm((current) => ({ ...current, countedQuantity: event.target.value }));
+                setQuantityError(false);
+              }}
+            />
+          </FormField>
+          <FormField labelKey="warehouse.inventory.differenceField">
+            <input value={formatNumber(difference)} dir="ltr" readOnly />
+          </FormField>
+          <FormField labelKey="warehouse.stocktaking.notesField">
+            <input
+              value={form.notes}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, notes: event.target.value }))
+              }
+            />
+          </FormField>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={confirmSave}
+        titleKey="warehouse.inventory.confirmTitle"
+        messageKey="warehouse.inventory.confirmMessage"
+      />
 
       <Modal
         open={details !== null}

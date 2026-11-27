@@ -14,9 +14,12 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoCategories, demoUnits } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
 import { useDemoProductStore } from '@/data/demoProductStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
+import { getCategoryDisplayName } from '@/lib/category';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { ProductSummary } from '@/lib/product';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -89,6 +92,8 @@ function expiryRisk(expiryDate: string | null): ExpiryRisk {
 export function ExpirationTrackingPage() {
   const { selectedWarehouse } = useApp();
   const { productSummaries } = useDemoProductStore();
+  const { getCategoryById } = useDemoCategoryStore();
+  const { units } = useDemoUnitStore();
   const loader = useDemoLoader(productSummaries);
   const [search, setSearch] = useState('');
   const [riskFilter, setRiskFilter] = useState<ExpiryRisk | ''>('');
@@ -116,6 +121,11 @@ export function ExpirationTrackingPage() {
       return matchesSearch && matchesRisk;
     });
   }, [rows, search, riskFilter]);
+
+  function unitLabel(unitId: string): string {
+    const unit = units.find((item) => item.id === unitId);
+    return unit ? getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix')) : unitId;
+  }
 
   const criticalCount = useMemo(
     () =>
@@ -305,16 +315,16 @@ export function ExpirationTrackingPage() {
             <div>
               <strong>{t('common.labels.category')}</strong>
               <p>
-                {demoCategories.find((category) => category.id === details.product.categoryId)
-                  ?.name ?? t('warehouse.products.noCategory')}
+                {getCategoryDisplayName(
+                  getCategoryById(details.product.categoryId),
+                  t('warehouse.products.noCategory'),
+                  t('warehouse.shared.archivedCategorySuffix'),
+                )}
               </p>
             </div>
             <div>
               <strong>{t('common.labels.unit')}</strong>
-              <p>
-                {demoUnits.find((unit) => unit.id === details.product.baseUnitId)?.name ??
-                  details.product.baseUnitId}
-              </p>
+              <p>{unitLabel(details.product.baseUnitId)}</p>
             </div>
           </div>
         ) : null}

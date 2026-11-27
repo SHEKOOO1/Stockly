@@ -5,8 +5,8 @@
 
 | Field | Value |
 |---|---|
-| Last updated | 2026-11-24 |
-| Updated by | Initial frontend implementation and final verification |
+| Last updated | 2026-11-27 |
+| Updated by | Demo warehouse operations implementation and verification (frontend demo only) |
 | Product | Stockly (ستوكلي) |
 | Blueprint version | **1.1.0 — `STOCKLY BLUEPRINT v1.1 — RATIFIED / READY FOR PHASE 1`** |
 | Released code version | None — Phase 1 implementation is in progress |
@@ -94,7 +94,7 @@ unexecuted.
 | Migrations written | **2 — `InitialSchema`, `TenantIsolation`** — both **applied to `localhost\SQLEXPRESS`**; schema verified at head |
 | Tests written | **440** — 322 unit, 51 architecture, 40 integration, 20 security, 3 concurrency, 4 migration |
 | Tests executed / passing | **440 PASS / 0 fail / 0 skipped** against real SQL Server (2026-11-24). `dotnet format` clean; build 0 warnings; `has-pending-model-changes` clean with local EF tools 10.0.12 |
-| Frontend | **Mocked/static skeleton implemented** under `client/` — 34 Arabic RTL routes, local interactions, no API/auth/persistence; Phase 8 PWA not complete (§3b) |
+| Frontend | **Mocked/static skeleton implemented** under `client/` — 35 Arabic RTL routes, local interactions, shared demo category, unit, supplier and inventory stores, demo-only role-aware navigation/notifications, a demo-only shared-terminal gate and 100 passing frontend tests; no API/real auth/persistence; Phase 8 production PWA not complete (§3b–§3h) |
 | Frontend skeleton handoff | 🟡 **B — READY WITH DOCUMENTED NON-BLOCKING LIMITATIONS** — mocked/static shell only; data-connected UI blocked by absent auth and `/api/v1/**` endpoints (§3a) |
 | Infrastructure | Local reference scaffold exists — `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `infra/nginx`, migration profile and `.github/workflows/ci.yml`; **not Docker-validated** |
 | Production readiness | **Not claimed. Nothing is deployed.** |
@@ -165,12 +165,12 @@ this review.
 ## 3b. Initial Frontend Implementation (2026-11-24)
 
 The mocked/static frontend authorised by §3a is now implemented in `client/`.
-It contains a React 18 + TypeScript + Vite application with 34 page routes
-(8 platform, 8 organization, 18 warehouse), an Arabic RTL shell, responsive
-navigation, breadcrumbs, command palette, context selectors, notifications,
-toasts, reusable tables/forms/dialogs/charts, typed i18n modules and isolated
-`origin: 'demo'` data. All 34 routes have built content; no page renders
-`PlaceholderPage`.
+It contained a React 18 + TypeScript + Vite application with 34 initial page
+routes (8 platform, 8 organization, 18 warehouse), an Arabic RTL shell,
+responsive navigation, breadcrumbs, command palette, context selectors,
+notifications, toasts, reusable tables/forms/dialogs/charts, typed i18n modules
+and isolated `origin: 'demo'` data. All initial 34 routes had built content; no
+page rendered `PlaceholderPage`. The current client has 35 routes after §3h.
 
 Implemented interactions are local-only: context switching, notification state,
 command-palette navigation, search/filter/sort/pagination, create/edit/delete
@@ -192,6 +192,136 @@ passed / 0 failed / 0 skipped**. Docker/Compose/Nginx and hosted CI remain
 unvalidated. Full detail, including implemented/not-started status by category,
 is in `docs/INITIAL_FRONTEND_IMPLEMENTATION.md`. This does **not** make Phase 1
 or Phase 8 complete, and no commit was made.
+
+## 3c. Category management completion (2026-11-27)
+
+The Categories page was completed as a **local demonstration feature only**.
+`DemoCategoryStoreProvider` in `client/src/data/demoCategoryStore.tsx` is now the
+shared in-memory source of truth for categories. It is wired in `App.tsx` and
+used by Categories, Products, Product Details, Overview, Stock and Expiration
+pages. Helpers in `client/src/lib/category.ts` provide trim/case-insensitive
+validation (required fields, minimum lengths, duplicate name/code), parent-cycle
+protection, defensive hierarchy flattening, display labels and derived product
+counts.
+
+The Categories page now offers local create/edit/details, search and status
+filters, a hierarchy table, derived active-product counts, and archive/restore
+using the existing demo record lifecycle. Archived categories are excluded from
+selectable parent and product-form lists; products keep their category reference
+and archived category labels gain the Arabic `(مؤرشف)` suffix. Arabic seed names,
+category translations and validation messages were restored where they had been
+corrupted into `?` characters.
+
+No API call, DTO contract, persistence, authentication, RBAC evaluation or
+server-side authorization was added. Seed `productCount` values remain
+illustrative; counts in the demo UI are derived from the shared product store and
+exclude archived products by default. Backend category CRUD, authoritative
+counts, hierarchy invariants and `master.categories.read` /
+`master.categories.manage` enforcement remain owning-phase work. No ADR, design
+count, phase boundary or TBD status changed.
+
+Verification on 2026-11-27: `npm test -- --run` passed **42 tests in 7 files**,
+`npm run format:check`, `npm run typecheck` and `npm run lint` passed, and
+`npm run build` completed with only Vite's existing >500 kB chunk-size warning.
+The backend suite was not re-run in this pass; the previously verified **440
+passed / 0 failed / 0 skipped** result remains the recorded backend evidence.
+
+## 3d. Units of measurement completion (2026-11-27)
+
+The Units page was completed as a **local demonstration feature only**.
+`DemoUnitStoreProvider` in `client/src/data/demoUnitStore.tsx` is now the shared
+in-memory source of truth for units. It is wired in `App.tsx` and consumed by the
+Units page, product form, Products and Product Details pages, Stock, Expiration,
+Dashboard, Incoming and Outgoing views. Helpers in `client/src/lib/unit.ts`
+centralise required/duplicate validation, case-insensitive symbol normalisation,
+decimal-range checks, unit-type labels, display labels and usage-count derivation.
+
+The Units page now supports local create/edit/details, search and status filters,
+a table of symbol, type, decimals, derived usage count and lifecycle state, and
+archive/restore. Archiving is blocked when an active demo product references the
+unit as its base or purchase unit; existing references are retained and archived
+labels gain the Arabic `(مؤرشف)` suffix. Archived units are excluded from
+selectable product-form lists unless they are the unit already referenced by the
+product being edited. Product-form options show the unit name and symbol
+consistently, including cross-warehouse seed references. Seed units were extended
+with demo-only lifecycle and type fields and realistic additional units.
+
+No API call, DTO contract, persistence, authentication, RBAC evaluation or
+server-side authorization was added. All counts are derived from local product
+state and exclude archived products by default. Backend unit CRUD, authoritative
+usage rules and `master.units.read` / `master.units.manage` enforcement remain
+owning-phase work. No ADR, design count, phase boundary or TBD status changed.
+
+Verification on 2026-11-27: `npm test -- --run` passed **58 tests in 10 files**;
+`npm run format:check`, `npm run typecheck`, `npm run lint` and `npm run build`
+passed, with only Vite's existing >500 kB chunk-size warning. The backend suite
+was not re-run in this pass; the recorded backend evidence remains **440 passed /
+0 failed / 0 skipped**.
+
+## 3e. Supplier management completion (2026-11-27)
+
+The Suppliers page was completed as a **local demonstration feature only**.
+`DemoSupplierStoreProvider` in `client/src/data/demoSupplierStore.tsx` is now the
+shared in-memory source of truth for suppliers. It is wired in `App.tsx` and
+consumed by the Suppliers page, product form, Products, Product Details and
+Incoming views. Helpers in `client/src/lib/supplier.ts` centralise organization-
+scoped duplicate validation, code normalisation, phone/email checks, derived
+active-product usage counts, selectability rules and code-bearing display labels.
+
+The Suppliers page now supports local create/edit/details, search and status
+filters, a table of contact, phone, usage count and lifecycle fields, and
+archive/restore with Arabic validation and feedback. Duplicate checks are scoped
+by organization. Archiving does not rewrite or delete product references:
+archived suppliers remain displayable as current references with the Arabic
+`(مؤرشف)` suffix but are excluded from new product selectors; restore makes them
+selectable again. Usage counts are derived from distinct active products whose
+warehouse settings reference the supplier. Product-form options include the
+supplier code so renamed suppliers remain identifiable.
+
+No API call, DTO contract, persistence, authentication, RBAC evaluation or
+server-side authorization was added. Backend supplier CRUD, authoritative duplicate
+checks, usage counts and archive rules, and
+`purchasing.suppliers.read` / `purchasing.suppliers.manage` enforcement remain
+owning-phase work. No ADR, design count, phase boundary or TBD status changed.
+
+Verification on 2026-11-27: `npm test -- --run` passed **71 tests in 13 files**;
+`npm run format:check`, `npm run typecheck`, `npm run lint` and `npm run build`
+passed, with only Vite's existing >500 kB chunk-size warning. The backend suite
+was not re-run in this pass; the recorded backend evidence remains **440 passed /
+0 failed / 0 skipped**.
+
+## 3f. Demo shared-terminal UX (2026-11-27)
+
+A demo-only shared-terminal gate was added to the static client. On a cold start
+all shell routes and actions are blocked. The operator selects one of the active
+`demoUsers`, then enters any 6–12 digits in a masked keypad. The keypad stores
+only a digit count, not the entered value; the value is never compared with a
+secret, written to storage, logged or sent over the network. This is a local
+format-only preview and grants no real authentication or authorization.
+
+The profile menu now reflects the selected demo user and provides switch-user
+and sign-out actions. Both clear the in-memory session, reset organization,
+warehouse, notification and UI state, and remount demo stores by session user id
+so the next user does not inherit local preview mutations. Route/action gating
+lives above `AppShell`, `AppRoutes` and all demo store providers; page-level
+tests use a test-only bootstrap prop, while app-level tests exercise the gate.
+
+Responsive/touch work added larger keypad/card targets, mobile-friendly terminal
+layout, explicit invalid-format/loading states, an offline/unavailable notice
+that does not claim offline writes, and session-ended/switched notices. PWA
+metadata now includes stable `id`, explicit `/` start URL/scope, 192px and 512px
+PNG icons, a separate maskable SVG, and matching HTML theme metadata. There is
+still **no service worker** and no production PWA claim.
+
+No API call, DTO contract, persistence, real authentication, RBAC evaluation,
+backend authorization, ADR, TBD answer or phase-boundary change was added. The
+real PIN, device enrollment, token and session model remains Phase 2/4 work.
+
+Verification on 2026-11-27: `npm test -- --run` passed **81 tests in 14 files**;
+`npm run format:check`, `npm run typecheck`, `npm run lint` and `npm run build`
+passed, with only Vite's existing >500 kB chunk-size warning. The backend suite
+was not re-run in this pass; the recorded backend evidence remains **440 passed /
+0 failed / 0 skipped**.
 
 **Before that — Phase 1 verification closure and reference infrastructure** (2026-11-23):
 populated `Stockly.ConcurrencyTests` (3 tests) and `Stockly.MigrationTests`
@@ -247,6 +377,60 @@ through all eight detailed design documents. No design count changed.
 **Before that:** blueprint finalization to v1.0 (2026-09-27), which reconciled
 the master specification against every detailed design document and resolved the
 `InventoryLot`/`StockBalance` unique-index defect.
+
+## 3g. Demo inventory operations (2026-11-27)
+
+Receiving, issuing, signed adjustments and stock-count reconciliation were added
+as **local demonstration behaviour only**. `DemoInventoryStoreProvider` in
+`client/src/data/demoInventoryStore.tsx` is the shared in-memory movement and
+stock-count source of truth; it is wired in `App.tsx` and consumed by the
+Incoming, Outgoing, Adjustments, Stocktaking, Product Details, Movements,
+Dashboard, Reports and Alerts pages.
+
+Completed operations create movement records and update shared product stock
+balances through `applyInventoryDelta`. The demo enforces required product and
+warehouse context, positive integer quantities, non-negative balances,
+archived-product exclusion from new forms, duplicate-request rejection and
+Arabic validation/feedback. Stock counts create a local count session and record
+the signed difference between expected and counted quantities. Historical
+movement rows remain readable after a product is archived.
+
+No API call, DTO contract, persistence, real authentication, RBAC evaluation,
+tenant/warehouse authorization, service worker, offline-write capability, ADR,
+TBD answer, phase-boundary change or design-count change was added. Backend
+posting, FEFO allocation, immutable ledger rows, count snapshots, idempotency,
+audit and outbox behaviour remain owning Phase 3/5 work.
+
+Verification on 2026-11-27: `npm test -- --run` passed **91 tests in 16 files**;
+`npm run format:check`, `npm run typecheck`, `npm run lint` and `npm run build`
+passed. React Router future-flag warnings are pre-existing test warnings and the
+build emits only Vite's existing >500 kB chunk-size warning. The backend suite
+was not re-run in this pass; recorded evidence remains **440 passed / 0 failed /
+0 skipped**. No commit was made.
+
+## 3h. Demo warehouse operations (2026-11-27)
+
+A daily warehouse operations route was added at `/warehouse/operations`. It is a
+**local demonstration screen only**: Arabic RTL product search/status filters,
+low-stock indicators, quick quantity add/issue with optional reason and live
+balance preview, plus an Add Item form that seeds an initial balance and minimum
+threshold. Completed quick operations write through `DemoInventoryStoreProvider`,
+so balances and movements remain shared with the existing inventory views.
+
+Demo users now carry a `roleCode` used only for local navigation/command/context
+visibility and notification audience. Operators land on the operations screen and
+do not see management tabs; low-stock notifications are raised only for the demo
+manager/owner audience. This is **not** RBAC evaluation, tenant authorization or
+warehouse authorization: the server remains authoritative in Phase 2 and no
+permission code, role or design count changed.
+
+Verification on 2026-11-27: `npm test -- --run` passed **100 tests in 17 files**;
+`npm run format:check`, `npm run typecheck`, `npm run lint` and `npm run build`
+passed. New coverage is in `client/src/pages/warehouse/WarehouseOperations.test.tsx`
+and `client/src/data/demoInventoryStore.test.tsx`. React Router future-flag
+warnings are pre-existing test warnings and the build emits only Vite's existing
+>500 kB chunk-size warning. The backend suite was not re-run; recorded evidence
+remains **440 passed / 0 failed / 0 skipped**. No commit was made.
 
 ## 4. Current Work
 
@@ -341,7 +525,7 @@ Entity distribution: `platform` 6, `identity` 16, `ops` 2, `master` 7,
 | `.gitignore` | Secret/build exclusion rules | Final |
 | `.env.example` | Non-secret configuration template | Final |
 
-## 7. Repository State (verified 2026-11-23)
+## 7. Repository State (verified 2026-11-27)
 
 | Check | Result |
 |---|---|
@@ -349,7 +533,7 @@ Entity distribution: `platform` 6, `identity` 16, `ops` 2, `master` 7,
 | Application source code | Domain, Application, Infrastructure and API projects under `src/` |
 | Migrations | **2** — `InitialSchema`, `TenantIsolation`; both applied |
 | Tests | Six active test projects plus the shared DB fixture library; **440 tests passing** |
-| Frontend | Untracked `client/` React + TypeScript + Vite skeleton; 34 routes and 5 frontend smoke tests passing |
+| Frontend | Untracked `client/` React + TypeScript + Vite skeleton; 35 routes, shared demo category/unit/supplier/inventory stores, demo-only role-aware navigation/notifications and 100 frontend tests passing |
 | Local infrastructure | `Dockerfile`, `.dockerignore`, `docker-compose.yml`, `infra/nginx`, `.config/dotnet-tools.json`, `.github/workflows/ci.yml` |
 | Git repository | **Initialised** — branch `main` |
 | Baseline commit | `9121044` "Initial commit" |

@@ -1,5 +1,5 @@
 import { ClipboardCheck, Plus, ShieldCheck, SlidersHorizontal } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ConfirmDialog,
   DataTable,
@@ -15,7 +15,13 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoDataOrigin, demoMovements, demoProducts } from '@/data/demoData';
+import { useDemoSession } from '@/context/DemoSessionContext';
+import {
+  inventoryErrorKeys,
+  makeInventoryRequestId,
+  useDemoInventoryStore,
+} from '@/data/demoInventoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatNumber } from '@/lib/format';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -61,12 +67,27 @@ const statusTones: Record<EntityStatus, StatusTone> = {
   confirmed: 'healthy',
 };
 
-const reasonOptions: readonly TranslationKey[] = [
-  'warehouse.adjustments.reasonCount',
-  'warehouse.adjustments.reasonDamage',
-  'warehouse.adjustments.reasonCorrection',
-  'warehouse.adjustments.reasonOther',
-];
+const reasonCodes = ['COUNT', 'DAMAGE', 'CORRECTION', 'OTHER'] as const;
+
+type AdjustmentReasonCode = (typeof reasonCodes)[number];
+
+const reasonLabels: Record<AdjustmentReasonCode, TranslationKey> = {
+  COUNT: 'warehouse.adjustments.reasonCount',
+  DAMAGE: 'warehouse.adjustments.reasonDamage',
+  CORRECTION: 'warehouse.adjustments.reasonCorrection',
+  OTHER: 'warehouse.adjustments.reasonOther',
+};
+
+const reasonOptions: readonly AdjustmentReasonCode[] = reasonCodes;
+
+function reasonFromNotes(notes: string): AdjustmentReasonCode {
+  return reasonCodes.find((code) => notes.startsWith(`${code}:`)) ?? 'CORRECTION';
+}
+
+function notesFromMovement(notes: string): string {
+  const code = reasonCodes.find((item) => notes.startsWith(`${item}:`));
+  return code ? notes.slice(code.length + 1) : notes;
+}
 
 interface AdjustmentRecord {
   origin: DataOrigin;
@@ -82,75 +103,92 @@ interface AdjustmentRecord {
 
 interface AdjustmentFormState {
   productId: string;
-  reasonKey: TranslationKey;
+  reasonCode: AdjustmentReasonCode;
   quantity: string;
   notes: string;
-}
-
-function initialAdjustments(): AdjustmentRecord[] {
-  return demoMovements
-    .filter((movement) => movement.type === 'ADJUSTMENT' || movement.type === 'COUNT')
-    .map((movement) => ({
-      origin: demoDataOrigin,
-      id: movement.id,
-      warehouseId: movement.warehouseId,
-      productId: movement.productId,
-      reasonKey:
-        movement.type === 'COUNT'
-          ? 'warehouse.adjustments.reasonCount'
-          : 'warehouse.adjustments.reasonCorrection',
-      quantity: movement.quantity,
-      notes: movement.notes,
-      occurredAt: movement.occurredAt,
-      status: movement.status,
-    }));
+  requestId: string;
 }
 
 export function InventoryAdjustmentsPage() {
   const { selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoMovements);
-  const [localAdjustments, setLocalAdjustments] =
-    useState<readonly AdjustmentRecord[]>(initialAdjustments);
+  const { session } = useDemoSession();
+  const { products: allProducts, getProductSummary } = useDemoProductStore();
+  const { movements, recordMovement, confirmMovement } = useDemoInventoryStore();
+  const loader = useDemoLoader(movements);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [reviewing, setReviewing] = useState<AdjustmentRecord | null>(null);
   const [form, setForm] = useState<AdjustmentFormState>({
     productId: '',
-    reasonKey: 'warehouse.adjustments.reasonCorrection',
+    reasonCode: 'CORRECTION',
     quantity: '1',
     notes: '',
+    requestId: '',
   });
   const [productError, setProductError] = useState(false);
   const [quantityError, setQuantityError] = useState(false);
 
   const products = useMemo(
-    () => demoProducts.filter((product) => product.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+    () =>
+      allProducts.filter(
+        (product) =>
+          product.warehouseId === selectedWarehouse.id && !product.isDeleted && product.isActive,
+      ),
+    [allProducts, selectedWarehouse.id],
+  );
+
+  const selectedProduct = products.find((product) => product.id === form.productId);
+  const expectedQuantity = selectedProduct ? getProductSummary(selectedProduct).onHandQuantity : 0;
+
+  const productLabel = useCallback(
+    (productId: string): string =>
+      allProducts.find((product) => product.id === productId)?.name ?? productId,
+    [allProducts],
   );
 
   const rows = useMemo(
     () =>
-      localAdjustments
-        .filter((adjustment) => adjustment.warehouseId === selectedWarehouse.id)
+      movements
+        .filter(
+          (movement) =>
+            movement.warehouseId === selectedWarehouse.id &&
+            (movement.type === 'ADJUSTMENT' || movement.type === 'COUNT'),
+        )
+        .map((movement) => {
+          const reasonCode = reasonFromNotes(movement.notes);
+          return {
+            origin: movement.origin,
+            id: movement.id,
+            warehouseId: movement.warehouseId,
+            productId: movement.productId,
+            reasonKey:
+              movement.type === 'COUNT' && reasonCode === 'CORRECTION'
+                ? reasonLabels.COUNT
+                : reasonLabels[reasonCode],
+            quantity: movement.quantity,
+            notes: notesFromMovement(movement.notes),
+            occurredAt: movement.occurredAt,
+            status: movement.status,
+          };
+        })
         .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
-    [localAdjustments, selectedWarehouse.id],
+    [movements, selectedWarehouse.id],
   );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return rows.filter((adjustment) => {
-      const productName =
-        demoProducts.find((product) => product.id === adjustment.productId)?.name ?? '';
       const matchesSearch =
         needle === '' ||
-        `${productName} ${t(adjustment.reasonKey)} ${adjustment.notes}`
+        `${productLabel(adjustment.productId)} ${t(adjustment.reasonKey)} ${adjustment.notes}`
           .toLocaleLowerCase()
           .includes(needle);
       const matchesStatus = statusFilter === '' || adjustment.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [rows, search, statusFilter]);
+  }, [rows, search, statusFilter, productLabel]);
 
   const pendingCount = useMemo(
     () => rows.filter((adjustment) => adjustment.status === 'pending').length,
@@ -168,12 +206,8 @@ export function InventoryAdjustmentsPage() {
     {
       id: 'product',
       headerKey: 'warehouse.adjustments.productColumn',
-      cell: (row) => (
-        <strong>
-          {demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
-        </strong>
-      ),
-      sortValue: (row) => row.productId,
+      cell: (row) => <strong>{productLabel(row.productId)}</strong>,
+      sortValue: (row) => productLabel(row.productId),
     },
     {
       id: 'reason',
@@ -225,9 +259,10 @@ export function InventoryAdjustmentsPage() {
     setAdding(true);
     setForm({
       productId: products[0]?.id ?? '',
-      reasonKey: 'warehouse.adjustments.reasonCorrection',
+      reasonCode: 'CORRECTION',
       quantity: '1',
       notes: '',
+      requestId: makeInventoryRequestId('adjust'),
     });
     setProductError(false);
     setQuantityError(false);
@@ -235,6 +270,7 @@ export function InventoryAdjustmentsPage() {
 
   function closeModal() {
     setAdding(false);
+    setConfirming(false);
     setProductError(false);
     setQuantityError(false);
   }
@@ -249,36 +285,30 @@ export function InventoryAdjustmentsPage() {
     if (!productValid || !quantityValid) {
       return;
     }
-
-    setLocalAdjustments((current) => [
-      ...current,
-      {
-        origin: demoDataOrigin,
-        id: `adj-local-${Date.now()}`,
-        warehouseId: selectedWarehouse.id,
-        productId: form.productId,
-        reasonKey: form.reasonKey,
-        quantity,
-        notes: form.notes.trim(),
-        occurredAt: new Date().toISOString(),
-        status: 'pending',
-      },
-    ]);
-    showToast('warehouse.shared.createToast', 'info');
-    closeModal();
+    setConfirming(true);
   }
 
-  function confirmReview() {
-    if (!reviewing) {
+  function confirmSave() {
+    const quantity = Number(form.quantity);
+    const result = recordMovement({
+      requestId: form.requestId,
+      warehouseId: selectedWarehouse.id,
+      productId: form.productId,
+      type: 'ADJUSTMENT',
+      quantity,
+      onHandDelta: quantity,
+      unitId: selectedProduct?.baseUnitId ?? '',
+      responsibleUserId: session?.user.id ?? '',
+      relatedTransaction: `ADJ-LOCAL-${Date.now().toString().slice(-4)}`,
+      notes: `${form.reasonCode}:${form.notes.trim()}`,
+      status: 'posted',
+    });
+    if (!result.ok) {
+      showToast(inventoryErrorKeys[result.errorCode], 'critical');
       return;
     }
-    setLocalAdjustments((current) =>
-      current.map((adjustment) =>
-        adjustment.id === reviewing.id ? { ...adjustment, status: 'confirmed' } : adjustment,
-      ),
-    );
-    showToast('warehouse.shared.confirmToast', 'info');
-    setReviewing(null);
+    showToast('warehouse.inventory.recordedToast', 'info');
+    closeModal();
   }
 
   function resetFilters() {
@@ -396,25 +426,28 @@ export function InventoryAdjustmentsPage() {
               ))}
             </select>
           </FormField>
+          <FormField labelKey="warehouse.inventory.expectedQuantityField">
+            <input value={formatNumber(expectedQuantity)} dir="ltr" readOnly />
+          </FormField>
           <FormField labelKey="warehouse.adjustments.reasonField" required>
             <select
-              value={form.reasonKey}
+              value={form.reasonCode}
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  reasonKey: event.target.value as TranslationKey,
+                  reasonCode: event.target.value as AdjustmentReasonCode,
                 }))
               }
             >
               {reasonOptions.map((reason) => (
                 <option key={reason} value={reason}>
-                  {t(reason)}
+                  {t(reasonLabels[reason])}
                 </option>
               ))}
             </select>
           </FormField>
           <FormField
-            labelKey="warehouse.adjustments.quantityField"
+            labelKey="warehouse.inventory.differenceField"
             required
             errorKey={quantityError ? 'common.form.invalidNumber' : undefined}
           >
@@ -441,9 +474,23 @@ export function InventoryAdjustmentsPage() {
       </Modal>
 
       <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={confirmSave}
+        titleKey="warehouse.inventory.confirmTitle"
+        messageKey="warehouse.inventory.confirmMessage"
+      />
+
+      <ConfirmDialog
         open={reviewing !== null}
         onClose={() => setReviewing(null)}
-        onConfirm={confirmReview}
+        onConfirm={() => {
+          if (reviewing) {
+            confirmMovement(reviewing.id);
+          }
+          showToast('warehouse.shared.confirmToast', 'info');
+          setReviewing(null);
+        }}
         titleKey="warehouse.shared.confirmReviewTitle"
         messageKey="warehouse.shared.confirmReviewMessage"
       />

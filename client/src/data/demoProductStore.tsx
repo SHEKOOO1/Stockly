@@ -36,6 +36,7 @@ export interface ProductFormValues {
   defaultReasonCodeId: string;
   isActive: boolean;
   minimumQuantity: number;
+  initialQuantity?: number;
   maximumQuantity: number | null;
   reorderQuantity: number | null;
   defaultSupplierId: string;
@@ -51,6 +52,14 @@ interface DemoProductState {
   batches: Batch[];
 }
 
+export interface InventoryDeltaInput {
+  productId: string;
+  warehouseId: string;
+  onHandDelta: number;
+  incomingDelta?: number;
+  occurredAt: string;
+}
+
 export interface DemoProductStoreValue {
   products: readonly Product[];
   barcodes: readonly ProductBarcode[];
@@ -62,6 +71,7 @@ export interface DemoProductStoreValue {
   updateProduct: (productId: string, values: ProductFormValues) => void;
   archiveProduct: (productId: string) => void;
   restoreProduct: (productId: string) => void;
+  applyInventoryDelta: (input: InventoryDeltaInput) => boolean;
   getProductSummary: (product: Product, now?: Date) => ProductSummary;
 }
 
@@ -169,7 +179,7 @@ export function DemoProductStoreProvider({ children }: { children: ReactNode }) 
             id: balanceId,
             productId,
             warehouseId,
-            onHandQuantity: 0,
+            onHandQuantity: Math.max(0, Math.floor(values.initialQuantity ?? 0)),
             incomingQuantity: 0,
             lastMovementAtUtc: new Date().toISOString(),
           },
@@ -287,6 +297,67 @@ export function DemoProductStoreProvider({ children }: { children: ReactNode }) 
     }));
   }, []);
 
+  const applyInventoryDelta = useCallback(
+    (input: InventoryDeltaInput) => {
+      const incomingDelta = input.incomingDelta ?? 0;
+      if (!Number.isFinite(input.onHandDelta) || !Number.isFinite(incomingDelta)) {
+        return false;
+      }
+      const product = state.products.find(
+        (item) => item.id === input.productId && item.warehouseId === input.warehouseId,
+      );
+      if (!product || product.isDeleted || !product.isActive) {
+        return false;
+      }
+      const balance = state.balances.find(
+        (item) => item.productId === input.productId && item.warehouseId === input.warehouseId,
+      );
+      if (!balance) {
+        if (input.onHandDelta < 0 || incomingDelta < 0) {
+          return false;
+        }
+        const balanceId = makeId('bal');
+        setState((current) => ({
+          ...current,
+          balances: [
+            ...current.balances,
+            {
+              origin: demoDataOrigin,
+              id: balanceId,
+              productId: input.productId,
+              warehouseId: input.warehouseId,
+              onHandQuantity: input.onHandDelta,
+              incomingQuantity: incomingDelta,
+              lastMovementAtUtc: input.occurredAt,
+            },
+          ],
+        }));
+        return true;
+      }
+      if (
+        balance.onHandQuantity + input.onHandDelta < 0 ||
+        balance.incomingQuantity + incomingDelta < 0
+      ) {
+        return false;
+      }
+      setState((current) => ({
+        ...current,
+        balances: current.balances.map((item) =>
+          item.id === balance.id
+            ? {
+                ...item,
+                onHandQuantity: item.onHandQuantity + input.onHandDelta,
+                incomingQuantity: item.incomingQuantity + incomingDelta,
+                lastMovementAtUtc: input.occurredAt,
+              }
+            : item,
+        ),
+      }));
+      return true;
+    },
+    [makeId, state.balances, state.products],
+  );
+
   const getProductSummary = useCallback(
     (product: Product, now?: Date): ProductSummary => buildProductSummary(dataset, product, now),
     [dataset],
@@ -304,6 +375,7 @@ export function DemoProductStoreProvider({ children }: { children: ReactNode }) 
       updateProduct,
       archiveProduct,
       restoreProduct,
+      applyInventoryDelta,
       getProductSummary,
     }),
     [
@@ -313,6 +385,7 @@ export function DemoProductStoreProvider({ children }: { children: ReactNode }) 
       updateProduct,
       archiveProduct,
       restoreProduct,
+      applyInventoryDelta,
       getProductSummary,
     ],
   );

@@ -5,7 +5,7 @@
 | Document | `TESTING_STRATEGY.md` |
 | Version | 1.1.0 |
 | Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
-| Last updated | 2026-11-23 |
+| Last updated | 2026-11-27 — local frontend warehouse-operations test evidence added; CI status unchanged |
 | Related | `SECURITY_ARCHITECTURE.md`, `DEVELOPMENT_STATUS.md` |
 
 ---
@@ -320,6 +320,19 @@ ISS-12 are resolved. Step 9 coverage data is collected by the CI workflow but th
 per-area thresholds in §6 are not yet enforced; step 10 (frontend), nightly steps
 12–15 and release steps 16–17 remain unimplemented/unrun. Docker validation is
 not claimed: Docker is unavailable on this workstation.
+
+**Frontend local verification (2026-11-27).** The latest demo warehouse
+operations slice was verified locally with `npm test -- --run` (**100 tests in 17
+files**), `npm run format:check`, `npm run typecheck`, `npm run lint` and
+`npm run build`. The preceding inventory-operations slice was verified at 91
+tests in 16 files. New coverage includes quick quantity add/issue propagation,
+overissue rejection, low-stock notification dedupe/resolve/reopen and
+role-targeted hiding, Add Item initial balance/validation and duplicate
+rejection. React Router future-flag warnings are pre-existing test warnings; the
+production build emits only the existing Vite chunk-size warning. These are local
+frontend gates, not evidence that CI step 10 has run or that any
+backend/integration/security tier was re-run. Backend evidence remains the 440
+tests recorded above.
 
 ---
 

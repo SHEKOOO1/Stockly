@@ -1,6 +1,7 @@
 import { Bell, CheckCheck } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import { useApp } from '@/context/AppContext';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import { t } from '@/i18n';
 import { formatDateTime } from '@/lib/format';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -8,14 +9,19 @@ import { EmptyState } from '@/components/ui/EmptyState';
 export function NotificationsMenu() {
   const {
     notifications,
-    unreadNotificationCount,
     notificationsOpen,
     toggleNotifications,
     setNotificationsOpen,
     markNotificationRead,
     markAllNotificationsRead,
   } = useApp();
+  const { session } = useDemoSession();
   const containerRef = useRef<HTMLDivElement>(null);
+  const visibleNotifications = notifications.filter(
+    (notification) =>
+      !notification.audienceRoleCode || notification.audienceRoleCode === session?.user.roleCode,
+  );
+  const visibleUnreadCount = visibleNotifications.filter((item) => !item.read).length;
 
   useEffect(() => {
     if (!notificationsOpen) {
@@ -40,9 +46,9 @@ export function NotificationsMenu() {
         aria-expanded={notificationsOpen}
       >
         <Bell size={18} aria-hidden="true" />
-        {unreadNotificationCount > 0 ? (
+        {visibleUnreadCount > 0 ? (
           <span className="icon-button__count" dir="ltr">
-            {unreadNotificationCount}
+            {visibleUnreadCount}
           </span>
         ) : null}
       </button>
@@ -54,17 +60,17 @@ export function NotificationsMenu() {
               type="button"
               className="button button--quiet button--xs"
               onClick={markAllNotificationsRead}
-              disabled={unreadNotificationCount === 0}
+              disabled={visibleUnreadCount === 0}
             >
               <CheckCheck size={14} aria-hidden="true" />
               {t('common.notifications.markAllRead')}
             </button>
           </div>
           <div className="menu-panel__body">
-            {notifications.length === 0 ? (
+            {visibleNotifications.length === 0 ? (
               <EmptyState />
             ) : (
-              notifications.map((notification) => (
+              visibleNotifications.map((notification) => (
                 <button
                   key={notification.id}
                   type="button"

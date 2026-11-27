@@ -1,4 +1,4 @@
-import { Check, Eye, Pencil, Plus, Truck } from 'lucide-react';
+import { Archive, ArchiveRestore, Eye, Pencil, Plus, Truck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   ConfirmDialog,
@@ -15,11 +15,16 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoDataOrigin, demoSuppliers } from '@/data/demoData';
+import { useDemoSupplierStore, type SupplierFormValues } from '@/data/demoSupplierStore';
 import { t, type TranslationKey } from '@/i18n';
-import { formatNumber } from '@/lib/format';
+import { formatDateTime, formatNumber } from '@/lib/format';
+import {
+  getSupplierDisplayName,
+  type SupplierSummary,
+  type SupplierValidationErrors,
+} from '@/lib/supplier';
 import { useDemoLoader } from '@/lib/useDemoLoader';
-import type { EntityStatus, StatusTone, Supplier } from '@/types/domain';
+import type { Supplier } from '@/types/domain';
 
 const formGridStyle = {
   display: 'grid',
@@ -29,238 +34,266 @@ const formGridStyle = {
 
 const statGridStyle = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
   gap: '16px',
   marginBlockEnd: '20px',
 } as const;
 
 const actionRowStyle = {
   display: 'flex',
-  flexWrap: 'wrap',
-  gap: '4px',
   justifyContent: 'flex-end',
+  gap: '8px',
+  flexWrap: 'wrap',
 } as const;
 
-const filterSelectStyle = { minWidth: 150 } as const;
+const filterSelectStyle = { minWidth: 170 } as const;
 
-const statusFilters: readonly EntityStatus[] = ['active', 'inactive'];
+type SupplierStatusFilter = '' | 'active' | 'archived';
 
-const statusLabels: Record<EntityStatus, TranslationKey> = {
-  active: 'common.status.active',
-  inactive: 'common.status.inactive',
-  draft: 'common.status.draft',
-  pending: 'common.status.pending',
-  posted: 'common.status.posted',
-  confirmed: 'common.status.confirmed',
-};
+type ValidationField = keyof SupplierValidationErrors;
 
-const statusTones: Record<EntityStatus, StatusTone> = {
-  active: 'healthy',
-  inactive: 'neutral',
-  draft: 'neutral',
-  pending: 'warning',
-  posted: 'info',
-  confirmed: 'healthy',
-};
+function errorKey(
+  field: ValidationField,
+  error: SupplierValidationErrors[ValidationField],
+): TranslationKey | undefined {
+  if (!error) {
+    return undefined;
+  }
+  if (error === 'required') {
+    return 'warehouse.suppliers.validationRequired';
+  }
+  if (error === 'minLength') {
+    return 'warehouse.suppliers.validationMinLength';
+  }
+  if (error === 'maxLength') {
+    return 'warehouse.suppliers.validationMaxLength';
+  }
+  if (error === 'duplicate') {
+    return 'warehouse.suppliers.validationDuplicate';
+  }
+  if (field === 'phone') {
+    return 'warehouse.suppliers.validationPhone';
+  }
+  return 'warehouse.suppliers.validationEmail';
+}
 
-interface SupplierFormState {
-  name: string;
-  code: string;
-  contactName: string;
+function emptyForm(): SupplierFormValues {
+  return { name: '', code: '', contactName: '', phone: '', email: '', address: '', notes: '' };
+}
+
+function formFromSupplier(supplier: Supplier): SupplierFormValues {
+  return {
+    name: supplier.name,
+    code: supplier.code,
+    contactName: supplier.contactName,
+    phone: supplier.phone,
+    email: supplier.email,
+    address: supplier.address,
+    notes: supplier.notes,
+  };
 }
 
 export function SuppliersPage() {
   const { selectedOrganization, selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoSuppliers);
-  const [localSuppliers, setLocalSuppliers] = useState<readonly Supplier[]>(demoSuppliers);
+  const {
+    suppliers,
+    addSupplier,
+    updateSupplier,
+    archiveSupplier,
+    restoreSupplier,
+    getSupplierSummaries,
+  } = useDemoSupplierStore();
+  const loader = useDemoLoader(suppliers);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
+  const [statusFilter, setStatusFilter] = useState<SupplierStatusFilter>('');
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Supplier | null>(null);
-  const [details, setDetails] = useState<Supplier | null>(null);
-  const [changingStatus, setChangingStatus] = useState<Supplier | null>(null);
-  const [form, setForm] = useState<SupplierFormState>({ name: '', code: '', contactName: '' });
-  const [nameError, setNameError] = useState(false);
-  const [codeError, setCodeError] = useState(false);
-  const [contactError, setContactError] = useState(false);
+  const [details, setDetails] = useState<SupplierSummary | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Supplier | null>(null);
+  const [form, setForm] = useState<SupplierFormValues>(emptyForm);
+  const [errors, setErrors] = useState<SupplierValidationErrors>({});
 
-  const organizationSuppliers = useMemo(
-    () => localSuppliers.filter((supplier) => supplier.organizationId === selectedOrganization.id),
-    [localSuppliers, selectedOrganization.id],
+  const summaries = useMemo(
+    () => getSupplierSummaries(selectedOrganization.id),
+    [getSupplierSummaries, selectedOrganization.id],
   );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
-    return organizationSuppliers.filter((supplier) => {
+    return summaries.filter((row) => {
       const matchesSearch =
         needle === '' ||
-        `${supplier.name} ${supplier.code} ${supplier.contactName}`
+        [
+          row.supplier.name,
+          row.supplier.code,
+          row.supplier.contactName,
+          row.supplier.phone,
+          row.supplier.email,
+          row.supplier.address,
+          row.supplier.notes,
+        ]
+          .join(' ')
           .toLocaleLowerCase()
           .includes(needle);
-      const matchesStatus = statusFilter === '' || supplier.status === statusFilter;
+      const matchesStatus =
+        statusFilter === '' ||
+        (statusFilter === 'active' && !row.supplier.isDeleted) ||
+        (statusFilter === 'archived' && row.supplier.isDeleted);
       return matchesSearch && matchesStatus;
     });
-  }, [organizationSuppliers, search, statusFilter]);
+  }, [summaries, search, statusFilter]);
 
-  const activeCount = useMemo(
-    () => organizationSuppliers.filter((supplier) => supplier.status === 'active').length,
-    [organizationSuppliers],
+  const activeCount = summaries.filter((row) => !row.supplier.isDeleted).length;
+  const archivedCount = summaries.filter((row) => row.supplier.isDeleted).length;
+  const usedCount = summaries.filter((row) => row.usageCount > 0).length;
+  const archivedSuffix = t('warehouse.suppliers.archivedSuffix');
+
+  const columns = useMemo<DataTableColumn<SupplierSummary>[]>(
+    () => [
+      {
+        id: 'name',
+        headerKey: 'warehouse.suppliers.nameColumn',
+        cell: (row) => (
+          <strong>{getSupplierDisplayName(row.supplier, row.supplier.name, archivedSuffix)}</strong>
+        ),
+        sortValue: (row) => row.supplier.name,
+      },
+      {
+        id: 'code',
+        headerKey: 'warehouse.suppliers.codeColumn',
+        cell: (row) => <span dir="ltr">{row.supplier.code}</span>,
+        ltr: true,
+        sortValue: (row) => row.supplier.code,
+      },
+      {
+        id: 'contact',
+        headerKey: 'warehouse.suppliers.contactColumn',
+        cell: (row) => row.supplier.contactName,
+        sortValue: (row) => row.supplier.contactName,
+      },
+      {
+        id: 'phone',
+        headerKey: 'warehouse.suppliers.phoneColumn',
+        cell: (row) => (
+          <span dir="ltr">{row.supplier.phone || t('common.states.notAvailable')}</span>
+        ),
+        ltr: true,
+        sortValue: (row) => row.supplier.phone,
+      },
+      {
+        id: 'usageCount',
+        headerKey: 'warehouse.suppliers.usageCountColumn',
+        cell: (row) => <span dir="ltr">{formatNumber(row.usageCount)}</span>,
+        sortValue: (row) => row.usageCount,
+        align: 'end',
+        ltr: true,
+      },
+      {
+        id: 'status',
+        headerKey: 'warehouse.suppliers.statusColumn',
+        cell: (row) => (
+          <StatusBadge
+            tone={row.supplier.isDeleted ? 'neutral' : 'healthy'}
+            labelKey={row.supplier.isDeleted ? 'common.status.archived' : 'common.status.active'}
+          />
+        ),
+      },
+      {
+        id: 'actions',
+        headerKey: 'common.table.actions',
+        cell: (row) => (
+          <div style={actionRowStyle}>
+            <button
+              type="button"
+              className="button button--quiet button--xs"
+              onClick={() => setDetails(row)}
+              aria-label={t('warehouse.shared.detailsAction')}
+            >
+              <Eye size={14} aria-hidden="true" />
+              {t('common.actions.view')}
+            </button>
+            <button
+              type="button"
+              className="button button--quiet button--xs"
+              onClick={() => openEdit(row.supplier)}
+              aria-label={t('common.actions.edit')}
+            >
+              <Pencil size={14} aria-hidden="true" />
+              {t('common.actions.edit')}
+            </button>
+            {row.supplier.isDeleted ? (
+              <button
+                type="button"
+                className="button button--quiet button--xs"
+                onClick={() => {
+                  restoreSupplier(row.supplier.id);
+                  showToast('warehouse.suppliers.restoreToast', 'info');
+                }}
+              >
+                <ArchiveRestore size={14} aria-hidden="true" />
+                {t('warehouse.products.restoreAction')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="button button--quiet button--xs"
+                onClick={() => setArchiveTarget(row.supplier)}
+              >
+                <Archive size={14} aria-hidden="true" />
+                {t('warehouse.products.archiveAction')}
+              </button>
+            )}
+          </div>
+        ),
+      },
+    ],
+    [archivedSuffix, restoreSupplier, showToast],
   );
-
-  const columns: DataTableColumn<Supplier>[] = [
-    {
-      id: 'name',
-      headerKey: 'common.labels.name',
-      cell: (row) => <strong>{row.name}</strong>,
-      sortValue: (row) => row.name,
-    },
-    {
-      id: 'code',
-      headerKey: 'warehouse.suppliers.codeColumn',
-      cell: (row) => <span dir="ltr">{row.code}</span>,
-      ltr: true,
-      sortValue: (row) => row.code,
-    },
-    {
-      id: 'contact',
-      headerKey: 'warehouse.suppliers.contactColumn',
-      cell: (row) => row.contactName,
-      sortValue: (row) => row.contactName,
-    },
-    {
-      id: 'status',
-      headerKey: 'warehouse.suppliers.statusColumn',
-      cell: (row) => (
-        <StatusBadge tone={statusTones[row.status]} labelKey={statusLabels[row.status]} />
-      ),
-    },
-    {
-      id: 'actions',
-      headerKey: 'common.table.actions',
-      cell: (row) => (
-        <div style={actionRowStyle}>
-          <button
-            type="button"
-            className="button button--quiet button--xs"
-            onClick={() => setDetails(row)}
-            aria-label={t('warehouse.shared.detailsAction')}
-          >
-            <Eye size={14} aria-hidden="true" />
-            {t('common.actions.view')}
-          </button>
-          <button
-            type="button"
-            className="button button--quiet button--xs"
-            onClick={() => openEdit(row)}
-            aria-label={t('common.actions.edit')}
-          >
-            <Pencil size={14} aria-hidden="true" />
-            {t('common.actions.edit')}
-          </button>
-          <button
-            type="button"
-            className="button button--quiet button--xs"
-            onClick={() => setChangingStatus(row)}
-            aria-label={t('warehouse.shared.changeStatusAction')}
-          >
-            <Check size={14} aria-hidden="true" />
-            {t('warehouse.shared.changeStatusAction')}
-          </button>
-        </div>
-      ),
-    },
-  ];
 
   function openAdd() {
     setEditing(null);
     setAdding(true);
-    setForm({ name: '', code: '', contactName: '' });
-    setNameError(false);
-    setCodeError(false);
-    setContactError(false);
+    setForm(emptyForm());
+    setErrors({});
   }
 
   function openEdit(supplier: Supplier) {
     setAdding(false);
     setEditing(supplier);
-    setForm({
-      name: supplier.name,
-      code: supplier.code,
-      contactName: supplier.contactName,
-    });
-    setNameError(false);
-    setCodeError(false);
-    setContactError(false);
+    setForm(formFromSupplier(supplier));
+    setErrors({});
   }
 
   function closeModal() {
     setAdding(false);
     setEditing(null);
-    setNameError(false);
-    setCodeError(false);
-    setContactError(false);
+    setErrors({});
+  }
+
+  function updateForm<K extends keyof SupplierFormValues>(key: K, value: SupplierFormValues[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => ({ ...current, [key]: undefined }));
   }
 
   function saveForm() {
-    const nameValid = form.name.trim().length >= 3;
-    const codeValid = form.code.trim().length >= 2;
-    const contactValid = form.contactName.trim().length >= 2;
-    setNameError(!nameValid);
-    setCodeError(!codeValid);
-    setContactError(!contactValid);
-    if (!nameValid || !codeValid || !contactValid) {
+    const result = editing
+      ? updateSupplier(editing.id, form)
+      : addSupplier(selectedOrganization.id, form);
+    if (result) {
+      setErrors(result);
       return;
     }
-
-    if (editing) {
-      setLocalSuppliers((current) =>
-        current.map((supplier) =>
-          supplier.id === editing.id
-            ? {
-                ...supplier,
-                name: form.name.trim(),
-                code: form.code.trim(),
-                contactName: form.contactName.trim(),
-              }
-            : supplier,
-        ),
-      );
-      showToast('warehouse.shared.updateToast', 'info');
-    } else {
-      setLocalSuppliers((current) => [
-        ...current,
-        {
-          origin: demoDataOrigin,
-          id: `sup-local-${Date.now()}`,
-          organizationId: selectedOrganization.id,
-          name: form.name.trim(),
-          code: form.code.trim(),
-          contactName: form.contactName.trim(),
-          status: 'active',
-        },
-      ]);
-      showToast('warehouse.shared.createToast', 'info');
-    }
+    showToast(editing ? 'warehouse.shared.updateToast' : 'warehouse.shared.createToast', 'info');
     closeModal();
   }
 
-  function confirmStatusChange() {
-    if (!changingStatus) {
+  function confirmArchive() {
+    if (!archiveTarget) {
       return;
     }
-    const nextStatus: EntityStatus = changingStatus.status === 'active' ? 'inactive' : 'active';
-    setLocalSuppliers((current) =>
-      current.map((supplier) =>
-        supplier.id === changingStatus.id ? { ...supplier, status: nextStatus } : supplier,
-      ),
-    );
-    showToast('warehouse.shared.statusToast', 'info');
-    setChangingStatus(null);
-  }
-
-  function resetFilters() {
-    setSearch('');
-    setStatusFilter('');
+    archiveSupplier(archiveTarget.id);
+    showToast('warehouse.suppliers.archiveToast', 'info');
+    setArchiveTarget(null);
   }
 
   return (
@@ -284,16 +317,28 @@ export function SuppliersPage() {
 
       <div style={statGridStyle}>
         <StatCard
-          labelKey="warehouse.suppliers.title"
-          value={formatNumber(organizationSuppliers.length)}
+          labelKey="warehouse.suppliers.countKpi"
+          value={formatNumber(summaries.length)}
           icon={Truck}
           tone="info"
         />
         <StatCard
-          labelKey="common.status.active"
+          labelKey="warehouse.suppliers.activeCount"
           value={formatNumber(activeCount)}
           icon={Truck}
           tone="healthy"
+        />
+        <StatCard
+          labelKey="warehouse.suppliers.archivedCount"
+          value={formatNumber(archivedCount)}
+          icon={Archive}
+          tone="neutral"
+        />
+        <StatCard
+          labelKey="warehouse.suppliers.usageCountKpi"
+          value={formatNumber(usedCount)}
+          icon={Truck}
+          tone="info"
         />
       </div>
 
@@ -303,20 +348,20 @@ export function SuppliersPage() {
           onChange={setSearch}
           placeholderKey="warehouse.suppliers.searchPlaceholder"
           resultCount={filteredRows.length}
-          onReset={resetFilters}
+          onReset={() => {
+            setSearch('');
+            setStatusFilter('');
+          }}
           filters={
             <select
               value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as EntityStatus | '')}
+              onChange={(event) => setStatusFilter(event.target.value as SupplierStatusFilter)}
               aria-label={t('warehouse.suppliers.statusFilter')}
               style={filterSelectStyle}
             >
               <option value="">{t('common.labels.all')}</option>
-              {statusFilters.map((status) => (
-                <option key={status} value={status}>
-                  {t(statusLabels[status])}
-                </option>
-              ))}
+              <option value="active">{t('common.status.active')}</option>
+              <option value="archived">{t('common.status.archived')}</option>
             </select>
           }
         />
@@ -330,8 +375,8 @@ export function SuppliersPage() {
         <DataTable
           rows={filteredRows}
           columns={columns}
-          rowKey={(row) => row.id}
-          pageSize={7}
+          rowKey={(row) => row.supplier.id}
+          pageSize={8}
           captionKey="warehouse.suppliers.title"
           emptyMessageKey="warehouse.shared.emptyRows"
         />
@@ -342,13 +387,14 @@ export function SuppliersPage() {
         onClose={closeModal}
         titleKey={editing ? 'warehouse.suppliers.editTitle' : 'warehouse.suppliers.addTitle'}
         descriptionKey="warehouse.shared.formDescription"
+        size="lg"
         footer={
           <>
             <button type="button" className="button button--quiet" onClick={closeModal}>
               {t('common.actions.cancel')}
             </button>
             <button type="button" className="button button--primary" onClick={saveForm}>
-              {t('warehouse.shared.savePreview')}
+              {t('warehouse.suppliers.savePreview')}
             </button>
           </>
         }
@@ -357,41 +403,70 @@ export function SuppliersPage() {
           <FormField
             labelKey="warehouse.suppliers.nameField"
             required
-            errorKey={nameError ? 'common.form.fieldRequired' : undefined}
+            errorKey={errorKey('name', errors.name)}
           >
-            <input
-              value={form.name}
-              onChange={(event) => {
-                setForm((current) => ({ ...current, name: event.target.value }));
-                setNameError(false);
-              }}
-            />
+            <input value={form.name} onChange={(event) => updateForm('name', event.target.value)} />
           </FormField>
           <FormField
             labelKey="warehouse.suppliers.codeField"
             required
-            errorKey={codeError ? 'common.form.fieldRequired' : undefined}
+            errorKey={errorKey('code', errors.code)}
           >
             <input
               dir="ltr"
               value={form.code}
-              onChange={(event) => {
-                setForm((current) => ({ ...current, code: event.target.value }));
-                setCodeError(false);
-              }}
+              onChange={(event) => updateForm('code', event.target.value)}
             />
           </FormField>
           <FormField
             labelKey="warehouse.suppliers.contactField"
             required
-            errorKey={contactError ? 'common.form.fieldRequired' : undefined}
+            errorKey={errorKey('contactName', errors.contactName)}
           >
             <input
               value={form.contactName}
-              onChange={(event) => {
-                setForm((current) => ({ ...current, contactName: event.target.value }));
-                setContactError(false);
-              }}
+              onChange={(event) => updateForm('contactName', event.target.value)}
+            />
+          </FormField>
+          <FormField
+            labelKey="warehouse.suppliers.phoneField"
+            errorKey={errorKey('phone', errors.phone)}
+          >
+            <input
+              type="tel"
+              dir="ltr"
+              value={form.phone}
+              onChange={(event) => updateForm('phone', event.target.value)}
+            />
+          </FormField>
+          <FormField
+            labelKey="warehouse.suppliers.emailField"
+            errorKey={errorKey('email', errors.email)}
+          >
+            <input
+              type="email"
+              dir="ltr"
+              value={form.email}
+              onChange={(event) => updateForm('email', event.target.value)}
+            />
+          </FormField>
+          <FormField
+            labelKey="warehouse.suppliers.addressField"
+            errorKey={errorKey('address', errors.address)}
+          >
+            <input
+              value={form.address}
+              onChange={(event) => updateForm('address', event.target.value)}
+            />
+          </FormField>
+          <FormField
+            labelKey="warehouse.suppliers.notesField"
+            errorKey={errorKey('notes', errors.notes)}
+          >
+            <textarea
+              rows={3}
+              value={form.notes}
+              onChange={(event) => updateForm('notes', event.target.value)}
             />
           </FormField>
         </div>
@@ -407,32 +482,59 @@ export function SuppliersPage() {
         {details ? (
           <div style={formGridStyle}>
             <div>
-              <strong>{t('common.labels.code')}</strong>
-              <p dir="ltr">{details.code}</p>
+              <strong>{t('warehouse.suppliers.codeField')}</strong>
+              <p dir="ltr">{details.supplier.code}</p>
             </div>
             <div>
-              <strong>{t('warehouse.suppliers.contactPanel')}</strong>
-              <p>{details.contactName}</p>
+              <strong>{t('warehouse.suppliers.contactField')}</strong>
+              <p>{details.supplier.contactName}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.suppliers.phoneField')}</strong>
+              <p dir="ltr">{details.supplier.phone || t('common.states.notAvailable')}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.suppliers.emailField')}</strong>
+              <p dir="ltr">{details.supplier.email || t('common.states.notAvailable')}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.suppliers.addressField')}</strong>
+              <p>{details.supplier.address || t('common.states.notAvailable')}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.suppliers.usageCountColumn')}</strong>
+              <p dir="ltr">{formatNumber(details.usageCount)}</p>
             </div>
             <div>
               <strong>{t('common.labels.status')}</strong>
               <p>
                 <StatusBadge
-                  tone={statusTones[details.status]}
-                  labelKey={statusLabels[details.status]}
+                  tone={details.supplier.isDeleted ? 'neutral' : 'healthy'}
+                  labelKey={
+                    details.supplier.isDeleted ? 'common.status.archived' : 'common.status.active'
+                  }
                 />
               </p>
+            </div>
+            <div>
+              <strong>{t('warehouse.productDetails.updatedLabel')}</strong>
+              <p dir="ltr">{formatDateTime(details.supplier.updatedAt)}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.suppliers.notesField')}</strong>
+              <p>{details.supplier.notes || t('common.states.notAvailable')}</p>
             </div>
           </div>
         ) : null}
       </Modal>
 
       <ConfirmDialog
-        open={changingStatus !== null}
-        onClose={() => setChangingStatus(null)}
-        onConfirm={confirmStatusChange}
-        titleKey="warehouse.shared.confirmStatusTitle"
-        messageKey="warehouse.shared.confirmStatusMessage"
+        open={archiveTarget !== null}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={confirmArchive}
+        titleKey="warehouse.suppliers.archiveTitle"
+        messageKey="warehouse.suppliers.archiveMessage"
+        confirmLabelKey="warehouse.products.archiveAction"
       />
     </>
   );

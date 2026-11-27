@@ -1,6 +1,7 @@
-import { Pencil, Plus, Tags } from 'lucide-react';
+﻿import { Archive, ArchiveRestore, Eye, Pencil, Plus, Tags } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
+  ConfirmDialog,
   DataTable,
   DemoNotice,
   ErrorState,
@@ -10,12 +11,15 @@ import {
   PageHeader,
   SearchFilterBar,
   StatCard,
+  StatusBadge,
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoCategories, demoDataOrigin, demoProducts } from '@/data/demoData';
+import { useDemoCategoryStore, type CategorySummaryRow } from '@/data/demoCategoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
 import { t } from '@/i18n';
-import { formatNumber } from '@/lib/format';
+import { getCategoryDisplayName, type CategoryValidationErrors } from '@/lib/category';
+import { formatDateTime, formatNumber } from '@/lib/format';
 import { useDemoLoader } from '@/lib/useDemoLoader';
 import type { Category } from '@/types/domain';
 
@@ -27,7 +31,7 @@ const formGridStyle = {
 
 const statGridStyle = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
   gap: '16px',
   marginBlockEnd: '20px',
 } as const;
@@ -35,7 +39,11 @@ const statGridStyle = {
 const actionRowStyle = {
   display: 'flex',
   justifyContent: 'flex-end',
+  gap: '8px',
+  flexWrap: 'wrap',
 } as const;
+
+const filterSelectStyle = { minWidth: 170 } as const;
 
 interface CategoryFormState {
   name: string;
@@ -43,67 +51,85 @@ interface CategoryFormState {
   parentId: string;
 }
 
-interface CategoryNode {
-  category: Category;
-  depth: number;
-}
+type CategoryStatusFilter = '' | 'active' | 'archived';
 
-function flattenCategories(
-  rows: readonly Category[],
-  parentId: string | null = null,
-  depth = 0,
-  visited: ReadonlySet<string> = new Set<string>(),
-): CategoryNode[] {
-  return rows
-    .filter((category) => category.parentId === parentId && !visited.has(category.id))
-    .flatMap((category) => {
-      const nextVisited = new Set(visited);
-      nextVisited.add(category.id);
-      return [{ category, depth }, ...flattenCategories(rows, category.id, depth + 1, nextVisited)];
-    });
+function errorKey(error: CategoryValidationErrors[keyof CategoryValidationErrors]) {
+  if (error === 'required') return 'warehouse.categories.validationRequired';
+  if (error === 'minLength') return 'warehouse.categories.validationMinLength';
+  if (error === 'duplicate') return 'warehouse.categories.validationDuplicate';
+  if (error === 'self') return 'warehouse.categories.validationSelfParent';
+  if (error === 'cycle') return 'warehouse.categories.validationCycle';
+  return undefined;
 }
 
 export function CategoriesPage() {
   const { selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoCategories);
-  const [localCategories, setLocalCategories] = useState<readonly Category[]>(demoCategories);
+  const { products } = useDemoProductStore();
+  const {
+    categories,
+    getCategorySummaries,
+    addCategory,
+    updateCategory,
+    archiveCategory,
+    restoreCategory,
+    getSelectableCategories,
+  } = useDemoCategoryStore();
+  const loader = useDemoLoader(categories);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CategoryStatusFilter>('');
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
+  const [details, setDetails] = useState<CategorySummaryRow | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<Category | null>(null);
   const [form, setForm] = useState<CategoryFormState>({ name: '', code: '', parentId: '' });
-  const [nameError, setNameError] = useState(false);
-  const [codeError, setCodeError] = useState(false);
+  const [errors, setErrors] = useState<CategoryValidationErrors>({});
 
   const warehouseCategories = useMemo(
-    () => localCategories.filter((category) => category.warehouseId === selectedWarehouse.id),
-    [localCategories, selectedWarehouse.id],
+    () => categories.filter((category) => category.warehouseId === selectedWarehouse.id),
+    [categories, selectedWarehouse.id],
+  );
+  const summaries = useMemo(
+    () => getCategorySummaries(selectedWarehouse.id),
+    [getCategorySummaries, selectedWarehouse.id],
   );
 
-  const nodes = useMemo(() => flattenCategories(warehouseCategories), [warehouseCategories]);
-
-  const filteredNodes = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
-    if (needle === '') {
-      return nodes;
-    }
-    return nodes.filter((node) =>
-      `${node.category.name} ${node.category.code}`.toLocaleLowerCase().includes(needle),
-    );
-  }, [nodes, search]);
+    return summaries.filter((row) => {
+      const matchesSearch =
+        needle === '' ||
+        `${row.category.name} ${row.category.code}`.toLocaleLowerCase().includes(needle);
+      const matchesStatus =
+        statusFilter === '' ||
+        (statusFilter === 'active' && !row.category.isDeleted) ||
+        (statusFilter === 'archived' && row.category.isDeleted);
+      return matchesSearch && matchesStatus;
+    });
+  }, [summaries, search, statusFilter]);
 
-  const totalProducts = useMemo(
-    () => demoProducts.filter((product) => product.warehouseId === selectedWarehouse.id).length,
-    [selectedWarehouse.id],
+  const activeCount = warehouseCategories.filter((category) => !category.isDeleted).length;
+  const archivedCount = warehouseCategories.filter((category) => category.isDeleted).length;
+  const assignedProducts = products.filter(
+    (product) => product.warehouseId === selectedWarehouse.id && !product.isDeleted,
+  ).length;
+
+  const parentOptions = useMemo(
+    () => getSelectableCategories(selectedWarehouse.id, editing?.id ?? null),
+    [getSelectableCategories, selectedWarehouse.id, editing?.id],
   );
 
-  const columns: DataTableColumn<CategoryNode>[] = [
+  const columns: DataTableColumn<CategorySummaryRow>[] = [
     {
       id: 'name',
       headerKey: 'warehouse.categories.hierarchyColumn',
       cell: (row) => (
         <strong style={{ paddingInlineStart: `${row.depth * 20}px` }}>
-          {row.depth > 0 ? '— ' : ''}
-          {row.category.name}
+          {row.depth > 0 ? '└ ' : ''}
+          {getCategoryDisplayName(
+            row.category,
+            row.category.name,
+            t('warehouse.shared.archivedCategorySuffix'),
+          )}
         </strong>
       ),
       sortValue: (row) => row.category.name,
@@ -118,10 +144,20 @@ export function CategoriesPage() {
     {
       id: 'productCount',
       headerKey: 'warehouse.categories.productCountColumn',
-      cell: (row) => <span dir="ltr">{formatNumber(row.category.productCount)}</span>,
-      sortValue: (row) => row.category.productCount,
+      cell: (row) => <span dir="ltr">{formatNumber(row.productCount)}</span>,
+      sortValue: (row) => row.productCount,
       align: 'end',
       ltr: true,
+    },
+    {
+      id: 'status',
+      headerKey: 'common.labels.status',
+      cell: (row) => (
+        <StatusBadge
+          tone={row.category.isDeleted ? 'neutral' : 'healthy'}
+          labelKey={row.category.isDeleted ? 'common.status.archived' : 'common.status.active'}
+        />
+      ),
     },
     {
       id: 'actions',
@@ -131,12 +167,43 @@ export function CategoriesPage() {
           <button
             type="button"
             className="button button--quiet button--xs"
+            onClick={() => setDetails(row)}
+            aria-label={t('warehouse.shared.detailsAction')}
+          >
+            <Eye size={14} aria-hidden="true" />
+            {t('common.actions.view')}
+          </button>
+          <button
+            type="button"
+            className="button button--quiet button--xs"
             onClick={() => openEdit(row.category)}
             aria-label={t('common.actions.edit')}
           >
             <Pencil size={14} aria-hidden="true" />
             {t('common.actions.edit')}
           </button>
+          {row.category.isDeleted ? (
+            <button
+              type="button"
+              className="button button--quiet button--xs"
+              onClick={() => {
+                restoreCategory(row.category.id);
+                showToast('warehouse.categories.restoreToast', 'info');
+              }}
+            >
+              <ArchiveRestore size={14} aria-hidden="true" />
+              {t('warehouse.products.restoreAction')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="button button--quiet button--xs"
+              onClick={() => setArchiveTarget(row.category)}
+            >
+              <Archive size={14} aria-hidden="true" />
+              {t('warehouse.products.archiveAction')}
+            </button>
+          )}
         </div>
       ),
     },
@@ -146,68 +213,31 @@ export function CategoriesPage() {
     setEditing(null);
     setAdding(true);
     setForm({ name: '', code: '', parentId: '' });
-    setNameError(false);
-    setCodeError(false);
+    setErrors({});
   }
 
   function openEdit(category: Category) {
     setAdding(false);
     setEditing(category);
-    setForm({
-      name: category.name,
-      code: category.code,
-      parentId: category.parentId ?? '',
-    });
-    setNameError(false);
-    setCodeError(false);
+    setForm({ name: category.name, code: category.code, parentId: category.parentId ?? '' });
+    setErrors({});
   }
 
   function closeModal() {
     setAdding(false);
     setEditing(null);
-    setNameError(false);
-    setCodeError(false);
+    setErrors({});
   }
 
   function saveForm() {
-    const nameValid = form.name.trim().length >= 3;
-    const codeValid = form.code.trim().length >= 2;
-    setNameError(!nameValid);
-    setCodeError(!codeValid);
-    if (!nameValid || !codeValid) {
+    const result = editing
+      ? updateCategory(editing.id, form)
+      : addCategory(selectedWarehouse.id, form);
+    if (result) {
+      setErrors(result);
       return;
     }
-
-    const parentId = form.parentId === '' ? null : form.parentId;
-    if (editing) {
-      setLocalCategories((current) =>
-        current.map((category) =>
-          category.id === editing.id
-            ? {
-                ...category,
-                name: form.name.trim(),
-                code: form.code.trim(),
-                parentId,
-              }
-            : category,
-        ),
-      );
-      showToast('warehouse.shared.updateToast', 'info');
-    } else {
-      setLocalCategories((current) => [
-        ...current,
-        {
-          origin: demoDataOrigin,
-          id: `cat-local-${Date.now()}`,
-          warehouseId: selectedWarehouse.id,
-          name: form.name.trim(),
-          code: form.code.trim(),
-          productCount: 0,
-          parentId,
-        },
-      ]);
-      showToast('warehouse.shared.createToast', 'info');
-    }
+    showToast(editing ? 'warehouse.shared.updateToast' : 'warehouse.shared.createToast', 'info');
     closeModal();
   }
 
@@ -238,10 +268,22 @@ export function CategoriesPage() {
           tone="info"
         />
         <StatCard
-          labelKey="warehouse.overview.productsColumn"
-          value={formatNumber(totalProducts)}
+          labelKey="warehouse.categories.activeCount"
+          value={formatNumber(activeCount)}
           icon={Tags}
           tone="healthy"
+        />
+        <StatCard
+          labelKey="warehouse.categories.archivedCount"
+          value={formatNumber(archivedCount)}
+          icon={Archive}
+          tone="neutral"
+        />
+        <StatCard
+          labelKey="warehouse.categories.assignedProducts"
+          value={formatNumber(assignedProducts)}
+          icon={Tags}
+          tone="info"
         />
       </div>
 
@@ -250,7 +292,23 @@ export function CategoriesPage() {
           value={search}
           onChange={setSearch}
           placeholderKey="warehouse.categories.searchPlaceholder"
-          resultCount={filteredNodes.length}
+          resultCount={filteredRows.length}
+          onReset={() => {
+            setSearch('');
+            setStatusFilter('');
+          }}
+          filters={
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as CategoryStatusFilter)}
+              aria-label={t('common.labels.status')}
+              style={filterSelectStyle}
+            >
+              <option value="">{t('common.labels.all')}</option>
+              <option value="active">{t('common.status.active')}</option>
+              <option value="archived">{t('common.status.archived')}</option>
+            </select>
+          }
         />
       </div>
 
@@ -260,7 +318,7 @@ export function CategoriesPage() {
         <LoadingState />
       ) : (
         <DataTable
-          rows={filteredNodes}
+          rows={filteredRows}
           columns={columns}
           rowKey={(row) => row.category.id}
           pageSize={8}
@@ -280,7 +338,7 @@ export function CategoriesPage() {
               {t('common.actions.cancel')}
             </button>
             <button type="button" className="button button--primary" onClick={saveForm}>
-              {t('warehouse.shared.savePreview')}
+              {t('warehouse.categories.savePreview')}
             </button>
           </>
         }
@@ -289,49 +347,119 @@ export function CategoriesPage() {
           <FormField
             labelKey="warehouse.categories.nameField"
             required
-            errorKey={nameError ? 'common.form.fieldRequired' : undefined}
+            errorKey={errorKey(errors.name)}
           >
             <input
               value={form.name}
               onChange={(event) => {
                 setForm((current) => ({ ...current, name: event.target.value }));
-                setNameError(false);
+                setErrors((c) => ({ ...c, name: undefined }));
               }}
             />
           </FormField>
           <FormField
             labelKey="warehouse.categories.codeField"
             required
-            errorKey={codeError ? 'common.form.fieldRequired' : undefined}
+            errorKey={errorKey(errors.code)}
           >
             <input
               dir="ltr"
               value={form.code}
               onChange={(event) => {
                 setForm((current) => ({ ...current, code: event.target.value }));
-                setCodeError(false);
+                setErrors((c) => ({ ...c, code: undefined }));
               }}
             />
           </FormField>
-          <FormField labelKey="warehouse.categories.parentField">
+          <FormField
+            labelKey="warehouse.categories.parentField"
+            errorKey={errorKey(errors.parentId)}
+          >
             <select
               value={form.parentId}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, parentId: event.target.value }))
-              }
+              onChange={(event) => {
+                setForm((current) => ({ ...current, parentId: event.target.value }));
+                setErrors((c) => ({ ...c, parentId: undefined }));
+              }}
             >
               <option value="">{t('warehouse.categories.rootOption')}</option>
-              {warehouseCategories
-                .filter((category) => category.id !== editing?.id)
-                .map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
+              {parentOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+              {editing?.parentId && !parentOptions.some((c) => c.id === editing.parentId) ? (
+                <option value={editing.parentId}>
+                  {warehouseCategories.find((c) => c.id === editing.parentId)?.name ??
+                    editing.parentId}
+                </option>
+              ) : null}
             </select>
           </FormField>
         </div>
       </Modal>
+
+      <Modal
+        open={details !== null}
+        onClose={() => setDetails(null)}
+        titleKey="warehouse.categories.detailsTitle"
+        descriptionKey="warehouse.shared.formDescription"
+        size="sm"
+      >
+        {details ? (
+          <div style={formGridStyle}>
+            <div>
+              <strong>{t('warehouse.categories.nameField')}</strong>
+              <p>{details.category.name}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.categories.codeField')}</strong>
+              <p dir="ltr">{details.category.code}</p>
+            </div>
+            <div>
+              <strong>{t('warehouse.categories.productCountColumn')}</strong>
+              <p dir="ltr">{formatNumber(details.productCount)}</p>
+            </div>
+            <div>
+              <strong>{t('common.labels.status')}</strong>
+              <p>
+                <StatusBadge
+                  tone={details.category.isDeleted ? 'neutral' : 'healthy'}
+                  labelKey={
+                    details.category.isDeleted ? 'common.status.archived' : 'common.status.active'
+                  }
+                />
+              </p>
+            </div>
+            <div>
+              <strong>{t('warehouse.categories.parentField')}</strong>
+              <p>
+                {warehouseCategories.find((c) => c.id === details.category.parentId)?.name ??
+                  t('warehouse.categories.rootOption')}
+              </p>
+            </div>
+            <div>
+              <strong>{t('warehouse.productDetails.updatedLabel')}</strong>
+              <p dir="ltr">{formatDateTime(details.category.updatedAt)}</p>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={() => {
+          if (archiveTarget) {
+            archiveCategory(archiveTarget.id);
+            showToast('warehouse.categories.archiveToast', 'info');
+          }
+        }}
+        titleKey="warehouse.categories.archiveTitle"
+        messageKey="warehouse.categories.archiveMessage"
+        confirmLabelKey="warehouse.products.archiveAction"
+        tone="danger"
+      />
     </>
   );
 }

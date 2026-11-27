@@ -1,5 +1,5 @@
 import { Eye, History, ShieldCheck } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ConfirmDialog,
   DataTable,
@@ -14,7 +14,9 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoMovements, demoProducts, demoUsers } from '@/data/demoData';
+import { demoUsers } from '@/data/demoData';
+import { useDemoInventoryStore } from '@/data/demoInventoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -87,8 +89,9 @@ const statusTones: Record<EntityStatus, StatusTone> = {
 
 export function StockMovementsPage() {
   const { selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoMovements);
-  const [localMovements, setLocalMovements] = useState<readonly InventoryMovement[]>(demoMovements);
+  const { products } = useDemoProductStore();
+  const { movements, confirmMovement } = useDemoInventoryStore();
+  const loader = useDemoLoader(movements);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<MovementType | ''>('');
   const [responsibleFilter, setResponsibleFilter] = useState('');
@@ -98,12 +101,18 @@ export function StockMovementsPage() {
   const [details, setDetails] = useState<InventoryMovement | null>(null);
   const [reviewing, setReviewing] = useState<InventoryMovement | null>(null);
 
+  const productLabel = useCallback(
+    (productId: string): string =>
+      products.find((product) => product.id === productId)?.name ?? productId,
+    [products],
+  );
+
   const rows = useMemo(
     () =>
-      localMovements
+      movements
         .filter((movement) => movement.warehouseId === selectedWarehouse.id)
         .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
-    [localMovements, selectedWarehouse.id],
+    [movements, selectedWarehouse.id],
   );
 
   const responsibleUsers = useMemo(() => {
@@ -115,9 +124,7 @@ export function StockMovementsPage() {
     const needle = search.trim().toLocaleLowerCase();
     const related = relatedFilter.trim().toLocaleLowerCase();
     return rows.filter((movement) => {
-      const productName =
-        demoProducts.find((product) => product.id === movement.productId)?.name ??
-        movement.productId;
+      const productName = productLabel(movement.productId);
       const matchesSearch =
         needle === '' || `${productName} ${movement.notes}`.toLocaleLowerCase().includes(needle);
       const matchesType = typeFilter === '' || movement.type === typeFilter;
@@ -137,7 +144,7 @@ export function StockMovementsPage() {
         matchesTo
       );
     });
-  }, [rows, search, typeFilter, responsibleFilter, relatedFilter, dateFrom, dateTo]);
+  }, [rows, search, typeFilter, responsibleFilter, relatedFilter, dateFrom, dateTo, productLabel]);
 
   const postedCount = useMemo(
     () =>
@@ -158,12 +165,8 @@ export function StockMovementsPage() {
     {
       id: 'product',
       headerKey: 'warehouse.movements.productColumn',
-      cell: (row) => (
-        <strong>
-          {demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
-        </strong>
-      ),
-      sortValue: (row) => row.productId,
+      cell: (row) => <strong>{productLabel(row.productId)}</strong>,
+      sortValue: (row) => productLabel(row.productId),
     },
     {
       id: 'quantity',
@@ -243,11 +246,7 @@ export function StockMovementsPage() {
     if (!reviewing) {
       return;
     }
-    setLocalMovements((current) =>
-      current.map((movement) =>
-        movement.id === reviewing.id ? { ...movement, status: 'confirmed' } : movement,
-      ),
-    );
+    confirmMovement(reviewing.id);
     showToast('warehouse.shared.confirmToast', 'info');
     setReviewing(null);
   }

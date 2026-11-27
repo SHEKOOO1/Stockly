@@ -16,8 +16,14 @@ import {
   type TabItem,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoCategories, demoMovements, demoSuppliers, demoUnits } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
+import { useDemoInventoryStore } from '@/data/demoInventoryStore';
 import { useDemoProductStore, type ProductFormValues } from '@/data/demoProductStore';
+import { useDemoSupplierStore } from '@/data/demoSupplierStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
+import { getCategoryDisplayName } from '@/lib/category';
+import { getSupplierDisplayName } from '@/lib/supplier';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDate, formatDateTime, formatNumber } from '@/lib/format';
 import type { ProductDataset, ProductSummary } from '@/lib/product';
@@ -76,6 +82,10 @@ export function ProductDetailsPage() {
     restoreProduct,
     updateProduct,
   } = useDemoProductStore();
+  const { getCategoryById } = useDemoCategoryStore();
+  const { units } = useDemoUnitStore();
+  const { getSupplierById } = useDemoSupplierStore();
+  const { movements } = useDemoInventoryStore();
   const loader = useDemoLoader(products, { delayMs: 200 });
   const [formOpen, setFormOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
@@ -98,13 +108,20 @@ export function ProductDetailsPage() {
 
   const productMovements = useMemo(
     () =>
-      demoMovements
+      movements
         .filter(
           (movement) => movement.productId === id && movement.warehouseId === selectedWarehouse.id,
         )
         .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt)),
-    [id, selectedWarehouse.id],
+    [movements, id, selectedWarehouse.id],
   );
+
+  function unitLabel(unitId: string | null | undefined): string {
+    const unit = units.find((item) => item.id === unitId);
+    return unit
+      ? getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix'))
+      : t('common.states.notAvailable');
+  }
 
   const batchColumns = useMemo<DataTableColumn<Batch>[]>(
     () => [
@@ -208,17 +225,15 @@ export function ProductDetailsPage() {
           <div className="product-definition">
             <DefinitionItem
               labelKey="warehouse.productDetails.categoryLabel"
-              value={
-                demoCategories.find((category) => category.id === summary.product.categoryId)
-                  ?.name ?? t('warehouse.products.noCategory')
-              }
+              value={getCategoryDisplayName(
+                getCategoryById(summary.product.categoryId),
+                t('warehouse.products.noCategory'),
+                t('warehouse.shared.archivedCategorySuffix'),
+              )}
             />
             <DefinitionItem
               labelKey="warehouse.productDetails.unitLabel"
-              value={
-                demoUnits.find((unit) => unit.id === summary.product.baseUnitId)?.name ??
-                t('common.states.notAvailable')
-              }
+              value={unitLabel(summary.product.baseUnitId)}
             />
             <DefinitionItem
               labelKey="warehouse.productDetails.skuLabel"
@@ -236,10 +251,7 @@ export function ProductDetailsPage() {
             />
             <DefinitionItem
               labelKey="warehouse.productDetails.purchaseUnitLabel"
-              value={
-                demoUnits.find((unit) => unit.id === summary.product.purchaseUnitId)?.name ??
-                t('common.states.notAvailable')
-              }
+              value={unitLabel(summary.product.purchaseUnitId)}
             />
             <DefinitionItem
               labelKey="warehouse.productDetails.batchTrackingLabel"
@@ -331,11 +343,11 @@ export function ProductDetailsPage() {
               />
               <DefinitionItem
                 labelKey="warehouse.productDetails.supplierLabel"
-                value={
-                  demoSuppliers.find(
-                    (supplier) => supplier.id === summary.setting?.defaultSupplierId,
-                  )?.name ?? t('warehouse.products.noSupplier')
-                }
+                value={getSupplierDisplayName(
+                  getSupplierById(summary.setting?.defaultSupplierId),
+                  t('warehouse.products.noSupplier'),
+                  t('warehouse.suppliers.archivedSuffix'),
+                )}
               />
               <DefinitionItem
                 labelKey="warehouse.products.stockStatusColumn"

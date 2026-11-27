@@ -36,6 +36,7 @@ export interface DemoUser extends DemoRecord {
   id: string;
   name: string;
   role: string;
+  roleCode: string;
   email: string;
   organizationIds: string[];
   warehouseIds: string[];
@@ -57,7 +58,12 @@ export interface Category extends DemoRecord {
   code: string;
   productCount: number;
   parentId: string | null;
+  isActive: boolean;
+  isDeleted: boolean;
+  updatedAt: string;
 }
+
+export type UnitType = 'count' | 'weight' | 'volume' | 'packaging' | 'length';
 
 export interface Unit extends DemoRecord {
   id: string;
@@ -65,6 +71,10 @@ export interface Unit extends DemoRecord {
   name: string;
   code: string;
   decimalPlaces: number;
+  unitType: UnitType;
+  isActive: boolean;
+  isDeleted: boolean;
+  updatedAt: string;
 }
 
 export interface Supplier extends DemoRecord {
@@ -73,7 +83,13 @@ export interface Supplier extends DemoRecord {
   name: string;
   code: string;
   contactName: string;
-  status: EntityStatus;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  isActive: boolean;
+  isDeleted: boolean;
+  updatedAt: string;
 }
 
 export type ProductStockStatus = 'healthy' | 'low' | 'out' | 'expiring';
@@ -214,6 +230,8 @@ export interface DemoNotification extends DemoRecord {
   createdAt: string;
   read: boolean;
   tone: StatusTone;
+  audienceRoleCode?: string;
+  lowStockKey?: string;
 }
 
 export interface ChartPoint {

@@ -1,9 +1,14 @@
 import { Barcode, Boxes, Layers3, Settings2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FormField, Modal } from '@/components/ui';
-import { demoCategories, demoSuppliers, demoUnits, demoWarehouses } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
+import { demoWarehouses } from '@/data/demoData';
 import type { ProductFormValues } from '@/data/demoProductStore';
+import { useDemoSupplierStore } from '@/data/demoSupplierStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
+import { getSupplierOptionLabel } from '@/lib/supplier';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { getPrimaryBarcode, getWarehouseSetting, type ProductDataset } from '@/lib/product';
 import type { BarcodeSymbology, Product } from '@/types/domain';
 
@@ -12,11 +17,21 @@ export interface ProductFormModalProps {
   product: Product | null;
   warehouseId: string;
   dataset: ProductDataset;
+  titleKey?: TranslationKey;
   onClose: () => void;
   onSave: (values: ProductFormValues) => void;
 }
 
-type FormErrorKey = 'name' | 'sku' | 'baseUnit' | 'shelfLife' | 'minimum' | 'maximum' | 'reorder';
+type FormErrorKey =
+  | 'name'
+  | 'sku'
+  | 'duplicate'
+  | 'baseUnit'
+  | 'shelfLife'
+  | 'minimum'
+  | 'initial'
+  | 'maximum'
+  | 'reorder';
 
 const symbologies: readonly BarcodeSymbology[] = [
   'EAN13',
@@ -41,6 +56,7 @@ interface FormState {
   defaultReasonCodeId: string;
   isActive: boolean;
   minimumQuantity: string;
+  initialQuantity: string;
   maximumQuantity: string;
   reorderQuantity: string;
   defaultSupplierId: string;
@@ -63,6 +79,7 @@ function emptyForm(): FormState {
     defaultReasonCodeId: '',
     isActive: true,
     minimumQuantity: '0',
+    initialQuantity: '0',
     maximumQuantity: '',
     reorderQuantity: '',
     defaultSupplierId: '',
@@ -88,6 +105,12 @@ function formFromProduct(product: Product, dataset: ProductDataset): FormState {
     defaultReasonCodeId: product.defaultReasonCodeId ?? '',
     isActive: product.isActive,
     minimumQuantity: setting?.minimumQuantity === undefined ? '0' : String(setting.minimumQuantity),
+    initialQuantity: String(
+      dataset.balances.find(
+        (balance) =>
+          balance.productId === product.id && balance.warehouseId === product.warehouseId,
+      )?.onHandQuantity ?? 0,
+    ),
     maximumQuantity:
       setting?.maximumQuantity === undefined || setting.maximumQuantity === null
         ? ''
@@ -115,6 +138,7 @@ export function ProductFormModal({
   product,
   warehouseId,
   dataset,
+  titleKey,
   onClose,
   onSave,
 }: ProductFormModalProps) {
@@ -129,12 +153,29 @@ export function ProductFormModal({
     setErrors({});
   }, [open, product, dataset, warehouseId]);
 
-  const categories = demoCategories.filter((category) => category.warehouseId === warehouseId);
-  const units = demoUnits.filter((unit) => unit.warehouseId === warehouseId);
+  const { categories: allCategories } = useDemoCategoryStore();
+  const categories = useMemo(
+    () =>
+      allCategories.filter(
+        (category) =>
+          category.warehouseId === warehouseId &&
+          (!category.isDeleted || category.id === form.categoryId),
+      ),
+    [allCategories, warehouseId, form.categoryId],
+  );
+  const { getSelectableUnits } = useDemoUnitStore();
+  const units = useMemo(
+    () => getSelectableUnits([product?.baseUnitId, product?.purchaseUnitId]),
+    [getSelectableUnits, product?.baseUnitId, product?.purchaseUnitId],
+  );
+  const { getSelectableSuppliers } = useDemoSupplierStore();
   const organizationId = demoWarehouses.find(
     (warehouse) => warehouse.id === warehouseId,
   )?.organizationId;
-  const suppliers = demoSuppliers.filter((supplier) => supplier.organizationId === organizationId);
+  const suppliers = useMemo(
+    () => getSelectableSuppliers(organizationId ?? '', [form.defaultSupplierId]),
+    [getSelectableSuppliers, organizationId, form.defaultSupplierId],
+  );
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -147,14 +188,28 @@ export function ProductFormModal({
     const skuLength = form.sku.trim().length;
     const shelfLife = parseOptionalInteger(form.shelfLifeDays);
     const minimum = parseOptionalInteger(form.minimumQuantity);
+    const initial = Number(form.initialQuantity);
     const maximum = parseOptionalInteger(form.maximumQuantity);
     const reorder = parseOptionalInteger(form.reorderQuantity);
+    const normalizedName = form.name.trim().toLocaleLowerCase();
+    const normalizedSku = form.sku.trim().toLocaleLowerCase();
+    const duplicate = dataset.products.some(
+      (item) =>
+        item.id !== product?.id &&
+        item.warehouseId === warehouseId &&
+        !item.isDeleted &&
+        (item.name.toLocaleLowerCase() === normalizedName ||
+          item.sku.toLocaleLowerCase() === normalizedSku),
+    );
 
     if (nameLength < 1 || nameLength > 200) {
       invalid.push('name');
     }
     if (skuLength < 3 || skuLength > 50) {
       invalid.push('sku');
+    }
+    if (duplicate) {
+      invalid.push('duplicate');
     }
     if (form.baseUnitId === '') {
       invalid.push('baseUnit');
@@ -164,6 +219,9 @@ export function ProductFormModal({
     }
     if (minimum === null || Number.isNaN(minimum) || minimum < 0) {
       invalid.push('minimum');
+    }
+    if (!Number.isInteger(initial) || initial < 0) {
+      invalid.push('initial');
     }
     if (maximum !== null && (Number.isNaN(maximum) || maximum <= 0)) {
       invalid.push('maximum');
@@ -181,9 +239,11 @@ export function ProductFormModal({
       const errorKeys: Record<FormErrorKey, TranslationKey> = {
         name: 'warehouse.products.nameLengthError',
         sku: 'warehouse.products.skuLengthError',
+        duplicate: 'warehouse.products.duplicateError',
         baseUnit: 'warehouse.products.baseUnitRequired',
         shelfLife: 'warehouse.products.shelfLifeRequired',
         minimum: 'warehouse.products.minimumError',
+        initial: 'warehouse.products.initialError',
         maximum: 'warehouse.products.maximumError',
         reorder: 'warehouse.products.reorderError',
       };
@@ -208,6 +268,7 @@ export function ProductFormModal({
       defaultReasonCodeId: form.defaultReasonCodeId,
       isActive: form.isActive,
       minimumQuantity: parseOptionalInteger(form.minimumQuantity) ?? 0,
+      initialQuantity: Number(form.initialQuantity),
       maximumQuantity: parseOptionalInteger(form.maximumQuantity),
       reorderQuantity: parseOptionalInteger(form.reorderQuantity),
       defaultSupplierId: form.defaultSupplierId,
@@ -220,7 +281,9 @@ export function ProductFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      titleKey={product ? 'warehouse.products.editTitle' : 'warehouse.products.addTitle'}
+      titleKey={
+        titleKey ?? (product ? 'warehouse.products.editTitle' : 'warehouse.products.addTitle')
+      }
       descriptionKey="warehouse.shared.formDescription"
       size="lg"
       footer={
@@ -240,7 +303,11 @@ export function ProductFormModal({
             <Boxes size={16} aria-hidden="true" />
             {t('warehouse.products.identitySection')}
           </h3>
-          <FormField labelKey="warehouse.products.nameField" required errorKey={errors.name}>
+          <FormField
+            labelKey="warehouse.products.nameField"
+            required
+            errorKey={errors.name ?? errors.duplicate}
+          >
             <input value={form.name} onChange={(event) => update('name', event.target.value)} />
           </FormField>
           <FormField labelKey="warehouse.products.nameArField">
@@ -261,8 +328,13 @@ export function ProductFormModal({
             >
               <option value="">{t('warehouse.products.noCategory')}</option>
               {categories.map((category) => (
-                <option key={category.id} value={category.id}>
+                <option
+                  key={category.id}
+                  value={category.id}
+                  disabled={category.isDeleted && category.id !== form.categoryId}
+                >
                   {category.name}
+                  {category.isDeleted ? ` (${t('common.status.archived')})` : ''}
                 </option>
               ))}
             </select>
@@ -293,8 +365,12 @@ export function ProductFormModal({
             >
               <option value="">{t('warehouse.products.chooseUnit')}</option>
               {units.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name}
+                <option
+                  key={unit.id}
+                  value={unit.id}
+                  disabled={unit.isDeleted && unit.id !== form.baseUnitId}
+                >
+                  {getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix'))}
                 </option>
               ))}
             </select>
@@ -306,8 +382,12 @@ export function ProductFormModal({
             >
               <option value="">{t('warehouse.products.chooseUnit')}</option>
               {units.map((unit) => (
-                <option key={unit.id} value={unit.id}>
-                  {unit.name}
+                <option
+                  key={unit.id}
+                  value={unit.id}
+                  disabled={unit.isDeleted && unit.id !== form.purchaseUnitId}
+                >
+                  {getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix'))}
                 </option>
               ))}
             </select>
@@ -323,6 +403,19 @@ export function ProductFormModal({
               dir="ltr"
               value={form.minimumQuantity}
               onChange={(event) => update('minimumQuantity', event.target.value)}
+            />
+          </FormField>
+          <FormField
+            labelKey="warehouse.products.initialQuantityField"
+            required
+            errorKey={errors.initial}
+          >
+            <input
+              type="number"
+              min="0"
+              dir="ltr"
+              value={form.initialQuantity}
+              onChange={(event) => update('initialQuantity', event.target.value)}
             />
           </FormField>
           <FormField labelKey="warehouse.products.maximumQuantityField" errorKey={errors.maximum}>
@@ -351,7 +444,7 @@ export function ProductFormModal({
               <option value="">{t('warehouse.products.noSupplier')}</option>
               {suppliers.map((supplier) => (
                 <option key={supplier.id} value={supplier.id}>
-                  {supplier.name}
+                  {getSupplierOptionLabel(supplier, t('warehouse.suppliers.archivedSuffix'))}
                 </option>
               ))}
             </select>

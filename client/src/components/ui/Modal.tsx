@@ -1,11 +1,12 @@
 import { X } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { t, type TranslationKey } from '@/i18n';
+import { t, type TranslationKey, type TranslationValues } from '@/i18n';
 
 export interface ModalProps {
   open: boolean;
   onClose: () => void;
   titleKey: TranslationKey;
+  titleValues?: TranslationValues;
   descriptionKey?: TranslationKey;
   footer?: ReactNode;
   size?: 'sm' | 'md' | 'lg';
@@ -16,6 +17,7 @@ export function Modal({
   open,
   onClose,
   titleKey,
+  titleValues,
   descriptionKey,
   footer,
   size = 'md',
@@ -64,7 +66,7 @@ export function Modal({
         <div className="modal__header">
           <div>
             <h2 id={titleId} className="modal__title">
-              {t(titleKey)}
+              {t(titleKey, titleValues)}
             </h2>
             {descriptionKey ? (
               <p id={descriptionId} className="modal__description">

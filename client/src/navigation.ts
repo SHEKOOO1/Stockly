@@ -232,6 +232,19 @@ export const routeMeta: readonly RouteMeta[] = [
     },
   },
   {
+    path: '/warehouse/operations',
+    scope: 'warehouse',
+    titleKey: 'warehouse.operations.title',
+    descriptionKey: 'warehouse.operations.description',
+    placeholderKey: 'warehouse.operations.placeholder',
+    nav: {
+      labelKey: 'warehouse.operations.navLabel',
+      groupKey: operationsGroup,
+      icon: Package,
+      order: 0,
+    },
+  },
+  {
     path: '/warehouse',
     scope: 'warehouse',
     titleKey: 'warehouse.dashboard.title',

@@ -15,9 +15,14 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoCategories, demoSuppliers, demoUnits } from '@/data/demoData';
+import { useDemoCategoryStore } from '@/data/demoCategoryStore';
 import { useDemoProductStore, type ProductFormValues } from '@/data/demoProductStore';
+import { useDemoSupplierStore } from '@/data/demoSupplierStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { locale, t } from '@/i18n';
+import { getCategoryDisplayName } from '@/lib/category';
+import { getSupplierDisplayName } from '@/lib/supplier';
+import { getUnitDisplayName } from '@/lib/unit';
 import { formatDate, formatNumber } from '@/lib/format';
 import type { ProductDataset, ProductSummary } from '@/lib/product';
 import { stockStatusLabelKeys, stockStatusTones } from '@/lib/productPresentation';
@@ -82,20 +87,20 @@ export function ProductsPage() {
   const [archiving, setArchiving] = useState<Product | null>(null);
   const [restoring, setRestoring] = useState<Product | null>(null);
 
-  const categories = useMemo(
-    () => demoCategories.filter((category) => category.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+  const { getCategorySummaries } = useDemoCategoryStore();
+  const { units } = useDemoUnitStore();
+  const { getSupplierSummaries } = useDemoSupplierStore();
+  const categorySummaries = useMemo(
+    () => getCategorySummaries(selectedWarehouse.id),
+    [getCategorySummaries, selectedWarehouse.id],
   );
-  const units = useMemo(
-    () => demoUnits.filter((unit) => unit.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+  const categories = useMemo(
+    () => categorySummaries.map((row) => row.category),
+    [categorySummaries],
   );
   const suppliers = useMemo(
-    () =>
-      demoSuppliers.filter(
-        (supplier) => supplier.organizationId === selectedWarehouse.organizationId,
-      ),
-    [selectedWarehouse.organizationId],
+    () => getSupplierSummaries(selectedWarehouse.organizationId).map((row) => row.supplier),
+    [getSupplierSummaries, selectedWarehouse.organizationId],
   );
   const dataset = useMemo<ProductDataset>(
     () => ({ products, barcodes, settings, balances, batches }),
@@ -205,18 +210,37 @@ export function ProductsPage() {
         id: 'category',
         headerKey: 'warehouse.products.categoryColumn',
         cell: (row) =>
-          demoCategories.find((category) => category.id === row.product.categoryId)?.name ??
-          t('warehouse.products.noCategory'),
+          getCategoryDisplayName(
+            categories.find((category) => category.id === row.product.categoryId),
+            t('warehouse.products.noCategory'),
+            t('warehouse.shared.archivedCategorySuffix'),
+          ),
         sortValue: (row) =>
-          demoCategories.find((category) => category.id === row.product.categoryId)?.name ?? '',
+          categories.find((category) => category.id === row.product.categoryId)?.name ?? '',
+      },
+      {
+        id: 'supplier',
+        headerKey: 'warehouse.products.supplierColumn',
+        cell: (row) =>
+          getSupplierDisplayName(
+            suppliers.find((supplier) => supplier.id === row.setting?.defaultSupplierId),
+            t('warehouse.products.noSupplier'),
+            t('warehouse.suppliers.archivedSuffix'),
+          ),
+        sortValue: (row) =>
+          suppliers.find((supplier) => supplier.id === row.setting?.defaultSupplierId)?.name ?? '',
       },
       {
         id: 'baseUnit',
         headerKey: 'warehouse.products.baseUnitColumn',
         cell: (row) =>
-          units.find((unit) => unit.id === row.product.baseUnitId)?.code ??
-          t('common.states.notAvailable'),
-        sortValue: (row) => row.product.baseUnitId,
+          getUnitDisplayName(
+            units.find((unit) => unit.id === row.product.baseUnitId),
+            t('common.states.notAvailable'),
+            t('warehouse.shared.archivedUnitSuffix'),
+          ),
+        sortValue: (row) =>
+          units.find((unit) => unit.id === row.product.baseUnitId)?.name ?? row.product.baseUnitId,
       },
       {
         id: 'onHand',
@@ -308,7 +332,7 @@ export function ProductsPage() {
         ),
       },
     ],
-    [navigate, units],
+    [categories, navigate, suppliers, units],
   );
 
   function resetFilters() {
@@ -428,11 +452,13 @@ export function ProductsPage() {
                 aria-label={t('warehouse.products.categoryFilter')}
               >
                 <option value="">{t('common.labels.all')}</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
+                {categorySummaries
+                  .filter((row) => !row.category.isDeleted)
+                  .map((row) => (
+                    <option key={row.category.id} value={row.category.id}>
+                      {row.category.name}
+                    </option>
+                  ))}
               </select>
               <select
                 value={stockFilter}

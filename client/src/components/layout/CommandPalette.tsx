@@ -2,20 +2,29 @@ import { CornerDownLeft, Search } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import { t } from '@/i18n';
-import { navigation, type NavigationItem } from '@/navigation';
+import { visibleNavigationForUser } from '@/lib/demoAccess';
+import type { NavigationItem } from '@/navigation';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 
 export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen } = useApp();
+  const { session } = useDemoSession();
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
 
-  const allItems = useMemo<NavigationItem[]>(
-    () => [...navigation.platform, ...navigation.organization, ...navigation.warehouse],
-    [],
-  );
+  const allItems = useMemo<NavigationItem[]>(() => {
+    if (!session) {
+      return [];
+    }
+    return [
+      ...visibleNavigationForUser('platform', session.user),
+      ...visibleNavigationForUser('organization', session.user),
+      ...visibleNavigationForUser('warehouse', session.user),
+    ];
+  }, [session]);
 
   const results = useMemo(() => {
     const needle = query.trim();

@@ -5,7 +5,7 @@
 | Document | `ROLES_PERMISSIONS.md` |
 | Version | 1.1.0 |
 | Status | FINAL DRAFT — consistent with `PROJECT_BLUEPRINT.md` v1.1; TBD-19, 21, 22, 24, 25 decided 2026-09-30 |
-| Last updated | 2026-09-30 |
+| Last updated | 2026-11-27 — demo-only frontend note added; model unchanged |
 | Permissions | **105** unique codes in 13 namespaces (§2) — unchanged by the 2026-09-30 decisions |
 | System roles | **11** tenant roles + **1** platform operator role (§3) — unchanged |
 | Related | `SECURITY_ARCHITECTURE.md`, `DATABASE_DESIGN.md`, `BUSINESS_RULES.md` |
@@ -13,6 +13,12 @@
 The 2026-09-30 owner decisions added **no permission code and no role**. Each
 either forbids a scope axis or fixes a default, so the 105/13/11+1 model is
 unchanged.
+
+**Demo-only frontend note (2026-11-27).** `client/` demo users carry a `roleCode`
+string matching named demo roles solely for local navigation, context and
+notification visibility. It does not evaluate permissions, grant roles or
+authorize tenant/warehouse access. No permission code, system role, matrix entry
+or count changed.
 
 ---
 

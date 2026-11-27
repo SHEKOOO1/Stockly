@@ -9,7 +9,7 @@ const fetchMock = vi.fn();
 function renderApp(initialEntry = '/warehouse/products') {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <App />
+      <App initialDemoSessionUserId="user-1" />
     </MemoryRouter>,
   );
 }
@@ -113,7 +113,7 @@ describe('Products page', () => {
     const supplier = within(dialog).getByLabelText(/المورد الافتراضي/);
 
     expect(
-      within(supplier).getByRole('option', { name: 'شركة الواحة للتجارة' }),
+      within(supplier).getByRole('option', { name: 'شركة الواحة للتجارة (SUP-WAHA)' }),
     ).toBeInTheDocument();
     expect(
       within(supplier).queryByRole('option', { name: 'دار القرطاسية' }),

@@ -35,6 +35,16 @@ function getNavigationToggle() {
   return toggle;
 }
 
+async function unlockDemoSession(userName = 'ريم الحربي') {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: new RegExp(userName) }));
+  for (let index = 0; index < 6; index += 1) {
+    await user.click(screen.getByRole('button', { name: `الرقم ${index + 1}` }));
+  }
+  await user.click(screen.getByRole('button', { name: 'تأكيد الدخول' }));
+  await screen.findByRole('button', { name: 'الملف الشخصي' });
+}
+
 describe('Stockly frontend shell', () => {
   beforeEach(() => {
     fetchMock.mockClear();
@@ -44,10 +54,13 @@ describe('Stockly frontend shell', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
   });
 
   it('redirects the root route to the platform dashboard', async () => {
     renderApp('/');
+    await unlockDemoSession();
 
     expect(await screen.findByRole('heading', { name: 'لوحة المنصة' })).toBeInTheDocument();
     expect(screen.getByText('وضع العرض')).toBeInTheDocument();
@@ -56,6 +69,7 @@ describe('Stockly frontend shell', () => {
 
   it('renders a deep warehouse route with local demo content', async () => {
     renderApp('/warehouse/stocktaking');
+    await unlockDemoSession();
 
     expect(await screen.findByRole('heading', { name: 'الجرد' })).toBeInTheDocument();
     expect(screen.getByText(/جلسات الجرد والكميات المتوقعة/)).toBeInTheDocument();
@@ -64,6 +78,7 @@ describe('Stockly frontend shell', () => {
 
   it('redirects unknown routes to the platform dashboard', async () => {
     renderApp('/route-that-does-not-exist');
+    await unlockDemoSession();
 
     expect(await screen.findByRole('heading', { name: 'لوحة المنصة' })).toBeInTheDocument();
   });
@@ -71,6 +86,7 @@ describe('Stockly frontend shell', () => {
   it('opens the command palette and navigates locally', async () => {
     const user = userEvent.setup();
     renderApp('/warehouse/products');
+    await unlockDemoSession();
 
     await user.click(screen.getByRole('button', { name: 'فتح البحث العام' }));
     const dialog = await screen.findByRole('dialog', { name: 'البحث العام' });
@@ -84,6 +100,7 @@ describe('Stockly frontend shell', () => {
   it('closes the command palette with Escape', async () => {
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     await user.click(screen.getByRole('button', { name: 'فتح البحث العام' }));
     expect(await screen.findByRole('dialog', { name: 'البحث العام' })).toBeInTheDocument();
@@ -99,6 +116,7 @@ describe('Stockly frontend shell', () => {
     setMobileNavigation(true);
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     const toggle = getNavigationToggle();
     const sidebar = document.getElementById('app-sidebar');
@@ -125,6 +143,7 @@ describe('Stockly frontend shell', () => {
     setMobileNavigation(true);
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     await user.click(getNavigationToggle());
     const sidebar = document.getElementById('app-sidebar');
@@ -139,6 +158,7 @@ describe('Stockly frontend shell', () => {
     setMobileNavigation(true);
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     await user.click(getNavigationToggle());
     await user.keyboard('{Escape}');
@@ -152,6 +172,7 @@ describe('Stockly frontend shell', () => {
     setMobileNavigation(true);
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     await user.click(getNavigationToggle());
     const overlay = document.querySelector('[data-sidebar-overlay]');
@@ -167,6 +188,7 @@ describe('Stockly frontend shell', () => {
     setMobileNavigation(true);
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     await user.click(getNavigationToggle());
     const sidebar = document.getElementById('app-sidebar');
@@ -182,6 +204,7 @@ describe('Stockly frontend shell', () => {
   it('collapses and expands the desktop navigation rail', async () => {
     const user = userEvent.setup();
     renderApp('/platform');
+    await unlockDemoSession();
 
     const collapseButton = screen.getByRole('button', { name: 'طي القائمة' });
     await user.click(collapseButton);
@@ -193,5 +216,87 @@ describe('Stockly frontend shell', () => {
     await waitFor(() => {
       expect(document.getElementById('app-sidebar')).not.toHaveClass('is-collapsed');
     });
+  });
+});
+
+describe('shared terminal demo gate', () => {
+  beforeEach(() => {
+    fetchMock.mockClear();
+    vi.stubGlobal('fetch', fetchMock);
+    setMobileNavigation(false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.localStorage.clear();
+    window.sessionStorage.clear();
+  });
+
+  it('blocks app routes until a demo PIN session is started', async () => {
+    renderApp('/warehouse/products');
+
+    expect(await screen.findByRole('heading', { name: 'تحديد المستخدم' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'الملف الشخصي' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'المنتجات' })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a PIN with too few digits without starting a session', async () => {
+    const user = userEvent.setup();
+    renderApp('/platform');
+
+    await user.click(screen.getByRole('button', { name: /ريم الحربي/ }));
+    for (let index = 0; index < 5; index += 1) {
+      await user.click(screen.getByRole('button', { name: `الرقم ${index + 1}` }));
+    }
+    await user.click(screen.getByRole('button', { name: 'تأكيد الدخول' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('أدخل ما بين 6 و12 رقماً للمتابعة.');
+    expect(screen.queryByRole('button', { name: 'الملف الشخصي' })).not.toBeInTheDocument();
+  });
+
+  it('starts a demo session without storing or displaying the entered PIN', async () => {
+    renderApp('/platform');
+    await unlockDemoSession();
+
+    expect(await screen.findByRole('heading', { name: 'لوحة المنصة' })).toBeInTheDocument();
+    expect(screen.getByText('ريم الحربي')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('123456');
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it('does not offer self-registration on the terminal', async () => {
+    renderApp('/platform');
+
+    expect(await screen.findByRole('heading', { name: 'تحديد المستخدم' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /إنشاء حساب|تسجيل جديد|مستخدم جديد/ })).toBeNull();
+  });
+
+  it('clears the visible session when signing out', async () => {
+    const user = userEvent.setup();
+    renderApp('/platform');
+    await unlockDemoSession();
+
+    await user.click(screen.getByRole('button', { name: 'الملف الشخصي' }));
+    await user.click(screen.getByRole('button', { name: 'إنهاء الجلسة' }));
+
+    expect(await screen.findByRole('heading', { name: 'تحديد المستخدم' })).toBeInTheDocument();
+    expect(screen.getByText(/انتهت جلسة العرض/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'الملف الشخصي' })).not.toBeInTheDocument();
+  });
+
+  it('clears the previous user context when switching users', async () => {
+    const user = userEvent.setup();
+    renderApp('/platform');
+    await unlockDemoSession();
+    await user.click(screen.getByRole('button', { name: 'الملف الشخصي' }));
+    await user.click(screen.getByRole('button', { name: 'تبديل المستخدم' }));
+
+    expect(await screen.findByRole('heading', { name: 'تحديد المستخدم' })).toBeInTheDocument();
+    expect(screen.getByText(/تم تبديل المستخدم/)).toBeInTheDocument();
+    await unlockDemoSession('خالد العتيبي');
+    expect(screen.getByText('خالد العتيبي')).toBeInTheDocument();
+    expect(screen.queryByText('ريم الحربي')).not.toBeInTheDocument();
   });
 });

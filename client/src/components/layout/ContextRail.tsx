@@ -1,20 +1,21 @@
 import { ChevronLeft, Info } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
+import { useDemoSession } from '@/context/DemoSessionContext';
 import { t } from '@/i18n';
+import { visibleScopesForUser } from '@/lib/demoAccess';
 import { contextLabelKey, contextRootPath } from '@/navigation';
-import type { AppContextScope } from '@/types/domain';
 import { ContextSelectors } from './ContextSelectors';
-
-const scopeOrder: AppContextScope[] = ['platform', 'organization', 'warehouse'];
 
 export function ContextRail() {
   const { activeScope } = useApp();
+  const { session } = useDemoSession();
+  const visibleScopes = session ? visibleScopesForUser(session.user) : [];
 
   return (
     <div className="context-rail">
       <div className="context-rail__levels">
-        {scopeOrder.map((scope, index) => (
+        {visibleScopes.map((scope, index) => (
           <div className="context-rail__segment" key={scope}>
             {index > 0 ? (
               <ChevronLeft className="context-rail__arrow" size={14} aria-hidden="true" />

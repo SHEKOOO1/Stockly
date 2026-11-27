@@ -1,6 +1,7 @@
 import { ArrowUpFromLine, Eye, Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
+  ConfirmDialog,
   DataTable,
   DemoNotice,
   ErrorState,
@@ -14,9 +15,17 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoDataOrigin, demoMovements, demoProducts, demoUnits, demoUsers } from '@/data/demoData';
+import { useDemoSession } from '@/context/DemoSessionContext';
+import {
+  inventoryErrorKeys,
+  makeInventoryRequestId,
+  useDemoInventoryStore,
+} from '@/data/demoInventoryStore';
+import { useDemoProductStore } from '@/data/demoProductStore';
+import { useDemoUnitStore } from '@/data/demoUnitStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDateTime, formatNumber } from '@/lib/format';
+import { getUnitOptionLabel } from '@/lib/unit';
 import { useDemoLoader } from '@/lib/useDemoLoader';
 import type { EntityStatus, InventoryMovement, StatusTone } from '@/types/domain';
 
@@ -64,57 +73,77 @@ interface OutgoingFormState {
   productId: string;
   quantity: string;
   destination: string;
-  status: EntityStatus;
   notes: string;
+  requestId: string;
 }
 
 export function OutgoingStockPage() {
   const { selectedWarehouse, showToast } = useApp();
-  const loader = useDemoLoader(demoMovements);
-  const [localMovements, setLocalMovements] = useState<readonly InventoryMovement[]>(demoMovements);
+  const { session } = useDemoSession();
+  const { products: allProducts, getProductSummary } = useDemoProductStore();
+  const { units } = useDemoUnitStore();
+  const { movements, recordMovement } = useDemoInventoryStore();
+  const loader = useDemoLoader(movements);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EntityStatus | ''>('');
   const [adding, setAdding] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [details, setDetails] = useState<InventoryMovement | null>(null);
   const [form, setForm] = useState<OutgoingFormState>({
     productId: '',
     quantity: '1',
     destination: '',
-    status: 'pending',
     notes: '',
+    requestId: '',
   });
   const [productError, setProductError] = useState(false);
   const [quantityError, setQuantityError] = useState(false);
   const [destinationError, setDestinationError] = useState(false);
 
   const products = useMemo(
-    () => demoProducts.filter((product) => product.warehouseId === selectedWarehouse.id),
-    [selectedWarehouse.id],
+    () =>
+      allProducts.filter(
+        (product) =>
+          product.warehouseId === selectedWarehouse.id && !product.isDeleted && product.isActive,
+      ),
+    [allProducts, selectedWarehouse.id],
   );
+
+  const selectedProduct = products.find((product) => product.id === form.productId);
+  const availableQuantity = selectedProduct ? getProductSummary(selectedProduct).onHandQuantity : 0;
+
+  const productLabel = useCallback(
+    (productId: string): string =>
+      allProducts.find((product) => product.id === productId)?.name ?? productId,
+    [allProducts],
+  );
+
+  function unitLabel(unitId: string, fallback = ''): string {
+    const unit = units.find((item) => item.id === unitId);
+    return unit ? getUnitOptionLabel(unit, t('warehouse.shared.archivedUnitSuffix')) : fallback;
+  }
 
   const outgoing = useMemo(
     () =>
-      localMovements.filter(
+      movements.filter(
         (movement) =>
           movement.warehouseId === selectedWarehouse.id && movement.type === 'STOCK_OUT',
       ),
-    [localMovements, selectedWarehouse.id],
+    [movements, selectedWarehouse.id],
   );
 
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return outgoing.filter((movement) => {
-      const productName =
-        demoProducts.find((product) => product.id === movement.productId)?.name ?? '';
       const matchesSearch =
         needle === '' ||
-        `${productName} ${movement.relatedTransaction} ${movement.notes}`
+        `${productLabel(movement.productId)} ${movement.relatedTransaction} ${movement.notes}`
           .toLocaleLowerCase()
           .includes(needle);
       const matchesStatus = statusFilter === '' || movement.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [outgoing, search, statusFilter]);
+  }, [outgoing, search, statusFilter, productLabel]);
 
   const totalQuantity = useMemo(
     () => outgoing.reduce((total, movement) => total + movement.quantity, 0),
@@ -132,12 +161,8 @@ export function OutgoingStockPage() {
     {
       id: 'product',
       headerKey: 'warehouse.outgoing.productColumn',
-      cell: (row) => (
-        <strong>
-          {demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId}
-        </strong>
-      ),
-      sortValue: (row) => row.productId,
+      cell: (row) => <strong>{productLabel(row.productId)}</strong>,
+      sortValue: (row) => productLabel(row.productId),
     },
     {
       id: 'quantity',
@@ -150,7 +175,7 @@ export function OutgoingStockPage() {
     {
       id: 'unit',
       headerKey: 'warehouse.outgoing.unitColumn',
-      cell: (row) => demoUnits.find((unit) => unit.id === row.unitId)?.code ?? row.unitId,
+      cell: (row) => unitLabel(row.unitId, row.unitId),
     },
     {
       id: 'destination',
@@ -197,8 +222,8 @@ export function OutgoingStockPage() {
       productId: products[0]?.id ?? '',
       quantity: '1',
       destination: '',
-      status: 'pending',
       notes: '',
+      requestId: makeInventoryRequestId('issue'),
     });
     setProductError(false);
     setQuantityError(false);
@@ -207,6 +232,7 @@ export function OutgoingStockPage() {
 
   function closeModal() {
     setAdding(false);
+    setConfirming(false);
     setProductError(false);
     setQuantityError(false);
     setDestinationError(false);
@@ -223,31 +249,31 @@ export function OutgoingStockPage() {
     if (!productValid || !quantityValid || !destinationValid) {
       return;
     }
+    setConfirming(true);
+  }
 
-    const product = products.find((item) => item.id === form.productId);
+  function confirmSave() {
+    const quantity = Number(form.quantity);
     const trimmedNotes = form.notes.trim();
     const notes = `${form.destination.trim()}${trimmedNotes ? ` — ${trimmedNotes}` : ''}`;
-    const responsibleUserId =
-      demoUsers.find((user) => user.warehouseIds.includes(selectedWarehouse.id))?.id ?? '';
-
-    setLocalMovements((current) => [
-      ...current,
-      {
-        origin: demoDataOrigin,
-        id: `mov-out-local-${Date.now()}`,
-        warehouseId: selectedWarehouse.id,
-        productId: form.productId,
-        type: 'STOCK_OUT',
-        quantity,
-        unitId: product?.baseUnitId ?? '',
-        occurredAt: new Date().toISOString(),
-        responsibleUserId,
-        relatedTransaction: `TXN-LOCAL-${Date.now().toString().slice(-4)}`,
-        status: form.status,
-        notes,
-      },
-    ]);
-    showToast('warehouse.shared.createToast', 'info');
+    const result = recordMovement({
+      requestId: form.requestId,
+      warehouseId: selectedWarehouse.id,
+      productId: form.productId,
+      type: 'STOCK_OUT',
+      quantity,
+      onHandDelta: -quantity,
+      unitId: selectedProduct?.baseUnitId ?? '',
+      responsibleUserId: session?.user.id ?? '',
+      relatedTransaction: `TXN-LOCAL-${Date.now().toString().slice(-4)}`,
+      notes,
+      status: 'posted',
+    });
+    if (!result.ok) {
+      showToast(inventoryErrorKeys[result.errorCode], 'critical');
+      return;
+    }
+    showToast('warehouse.inventory.recordedToast', 'info');
     closeModal();
   }
 
@@ -383,16 +409,10 @@ export function OutgoingStockPage() {
             />
           </FormField>
           <FormField labelKey="warehouse.outgoing.unitField">
-            <input
-              value={
-                demoUnits.find(
-                  (unit) =>
-                    unit.id ===
-                    products.find((product) => product.id === form.productId)?.baseUnitId,
-                )?.name ?? ''
-              }
-              readOnly
-            />
+            <input value={unitLabel(selectedProduct?.baseUnitId ?? '')} readOnly />
+          </FormField>
+          <FormField labelKey="warehouse.inventory.expectedQuantityField">
+            <input value={formatNumber(availableQuantity)} dir="ltr" readOnly />
           </FormField>
           <FormField
             labelKey="warehouse.outgoing.destinationField"
@@ -407,20 +427,6 @@ export function OutgoingStockPage() {
               }}
             />
           </FormField>
-          <FormField labelKey="warehouse.outgoing.statusField">
-            <select
-              value={form.status}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, status: event.target.value as EntityStatus }))
-              }
-            >
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {t(statusLabels[status])}
-                </option>
-              ))}
-            </select>
-          </FormField>
           <FormField labelKey="warehouse.outgoing.notesField">
             <input
               value={form.notes}
@@ -431,6 +437,14 @@ export function OutgoingStockPage() {
           </FormField>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        onConfirm={confirmSave}
+        titleKey="warehouse.inventory.confirmTitle"
+        messageKey="warehouse.inventory.confirmMessage"
+      />
 
       <Modal
         open={details !== null}
@@ -443,10 +457,7 @@ export function OutgoingStockPage() {
           <div style={formGridStyle}>
             <div>
               <strong>{t('warehouse.outgoing.productColumn')}</strong>
-              <p>
-                {demoProducts.find((product) => product.id === details.productId)?.name ??
-                  details.productId}
-              </p>
+              <p>{productLabel(details.productId)}</p>
             </div>
             <div>
               <strong>{t('warehouse.outgoing.quantityColumn')}</strong>

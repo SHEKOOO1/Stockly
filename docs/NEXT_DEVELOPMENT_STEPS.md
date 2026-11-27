@@ -1,6 +1,6 @@
 # Next Development Steps — Stockly
 
-Status date: 2026-11-24
+Status date: 2026-11-27
 
 These steps follow the ratified phase order. They do not answer unresolved TBDs
 or promote deferred functionality into Phase 1.
@@ -51,6 +51,86 @@ Before a data-connected frontend can replace mocks:
    §§2–3 before treating that document as the handoff contract source; the
    current host is outbox-aware.
 
+### Category-management backend seam (2026-11-27)
+
+The Categories, Units and Suppliers pages have shared in-memory demo stores, and
+the latest frontend suite has 100 passing tests in total after the warehouse
+operations slice. They remain local-only and must not be treated as an API
+contract.
+
+1. In the owning Phase 3 backend work, implement category CRUD, hierarchy and
+   archive/restore endpoints/DTOs with tenant scope from the authenticated
+   session and `master.categories.read` / `master.categories.manage` enforcement.
+   If any category resource is exposed as warehouse-scoped, also verify the
+   warehouse assignment and resource scope.
+2. Make product counts authoritative on the server, with documented semantics for
+   archived products and categories. The demo UI currently derives counts from
+   local product state and excludes archived products by default.
+3. Preserve product category references on category archive. Archived categories
+   must be excluded from selectable lists while remaining displayable as
+   archived labels in product views; no cascading reassignment is a frontend
+   decision.
+4. Update `docs/BACKEND_API_CONTRACT_GAPS.md` and the relevant OpenAPI metadata
+   when the operations exist. Only then replace the inactive demo-store seam with
+   a real typed client.
+5. Do not promote client-side `Category.isActive`, `isDeleted` or `updatedAt`
+   fields into a schema decision, and do not open a new ADR or answer a TBD from
+   this frontend work.
+
+### Unit-management backend seam (2026-11-27)
+
+The Units page now has a shared in-memory demo store and consistent labels across
+product and inventory views. It remains local-only and must not be treated as an
+API contract.
+
+1. In the owning Phase 3 backend work, implement unit CRUD and archive/restore
+   endpoints/DTOs with tenant scope from the authenticated session and
+   `master.units.read` / `master.units.manage` enforcement. If any unit resource
+   is exposed as warehouse-scoped, also verify warehouse assignment and resource
+   scope.
+2. Make usage counts and archive guards authoritative on the server, with
+   documented semantics for archived products and units. The demo UI derives
+   counts from local product state, excludes archived products by default and
+   blocks archive when an active product references the unit as its base or
+   purchase unit.
+3. Preserve product unit references on unit archive. Archived units must be
+   excluded from new selectable lists while remaining displayable as archived
+   labels in product views; no cascading reassignment is a frontend decision.
+4. Define conversion rules in their owning phase. The demo `unitType`,
+   `decimals`, `isActive`, `isDeleted` and `updatedAt` fields are UI state only;
+   TBD-26 stock reservations and conversion semantics remain untouched.
+5. Update `docs/BACKEND_API_CONTRACT_GAPS.md` and the relevant OpenAPI metadata
+   when the operations exist. Only then replace the inactive demo-store seam with
+   a real typed client. Do not promote the client's tenant-wide selectable-unit
+   rule into a backend scope decision.
+
+### Supplier-management backend seam (2026-11-27)
+
+The Suppliers page now has a shared in-memory demo store and consistent labels
+across product and incoming views. It remains local-only and must not be treated
+as an API contract.
+
+1. In the owning Phase 5 backend work, implement supplier CRUD and archive/restore
+   endpoints/DTOs with tenant scope from the authenticated session and
+   `purchasing.suppliers.read` / `purchasing.suppliers.manage` enforcement. If any
+   supplier resource is exposed as warehouse-scoped, also verify warehouse
+   assignment and resource scope.
+2. Make duplicate checks and usage counts authoritative on the server, with
+   documented semantics for archived products and suppliers. The demo UI scopes
+   duplicate names/codes by organization and derives counts from distinct active
+   products whose warehouse settings reference the supplier.
+3. Preserve product supplier references on supplier archive. Archived suppliers
+   must be excluded from new selectable lists while remaining displayable as
+   archived labels in product views; no cascading reassignment is a frontend
+   decision.
+4. Do not infer supplier currency, payment terms or rating rules from the demo
+   fields. Those remain phase/owner-governed design questions.
+5. Update `docs/BACKEND_API_CONTRACT_GAPS.md` and the relevant OpenAPI metadata
+   when the operations exist. Only then replace the inactive demo-store seam with
+   a real typed client. Do not promote the client's organization-scoped
+   selectable-supplier rule into a backend scope decision, and do not open a new
+   ADR or answer a TBD from this frontend work.
+
 ## Immediate Phase 1 completion work
 
 1. **Audit write path.** Drain `IAuditCollector` inside the same transaction as
@@ -70,6 +150,67 @@ Before a data-connected frontend can replace mocks:
    Docker is available, complete the pending CI gates, and wait for the
    ISS-05/ISS-06 owner decisions before choosing a licence, hosting target or
    production TLS source. Docker validation cannot be claimed on this workstation.
+
+### Shared-terminal backend seam (2026-11-27)
+
+The client now has a demo-only shared-terminal gate: active demo user selection,
+a format-only 6–12 digit masked preview, route/action gating, switch-user and
+sign-out. It is in-memory UI state and must not be treated as authentication.
+
+1. In Phase 2, implement the anonymous enrollment-code identity endpoint from
+   `API_CONVENTIONS.md` §12 and `WORKFLOWS.md` §2: return only membership id,
+   display name and avatar reference, rate limited and with no role/PIN status.
+2. Implement server-side PIN verification with memory-hard hashing, per-device,
+   per-membership and per-IP throttling, lockout and audit events. The selected
+   name and the client digit count grant nothing.
+3. Issue the access token in memory and the refresh token in an HttpOnly cookie
+   per ADR-0030. Never put either in `localStorage`, URLs, logs or demo data.
+4. Replace `DemoSessionProvider` with the real session adapter only when the
+   backend contract and S1–S12 security tests exist. Keep sign-out and
+   switch-user clearing all user-visible local state.
+5. In Phase 8, retain the responsive touch layout and PWA asset work, then add
+   the production service-worker/offline policy as a separate ratified design;
+   the current manifest explicitly claims no offline writes.
+
+### Inventory-operations backend seam (2026-11-27)
+
+The Incoming, Outgoing, Adjustments and Stocktaking pages now share a local
+in-memory movement/store projection. Receipts, issues, adjustments and counts
+update visible balances and history, but they are not authoritative and must not
+be treated as an API contract.
+
+1. In owning Phase 3/5 work, implement the documented stock-in, stock-out,
+   adjustment and stocktake endpoints/DTOs with tenant scope from the
+   authenticated session and warehouse assignment checks. The local
+   `StockBalance` projection and request ids are not backend schema decisions.
+2. Make balances, guarded decrement/increment, FEFO allocation, immutable ledger
+   rows, count cutoff snapshots, reason codes, idempotency and audit/outbox
+   effects authoritative on the server. The demo only enforces local UI rules.
+3. Resolve the route conflicts and absent inventory endpoints recorded in
+   `docs/BACKEND_API_CONTRACT_GAPS.md` before adding a typed client. Do not
+   invent reservations, locations, in-transit stock, approval semantics or
+   conversion rules from this frontend work.
+4. Replace `DemoInventoryStoreProvider` only when the backend contract and
+   security/integration tests exist. Retain the local preview labelling until
+   then.
+
+### Warehouse-operations backend seam (2026-11-27)
+
+The warehouse operations screen is a local daily-use projection over the shared
+demo inventory store. Quick adds/issues, Add Item and low-stock notifications are
+not authoritative.
+
+1. In owning Phase 3/5/7 work, map quick quantity changes to the documented
+   stock-in/stock-out endpoints/DTOs with tenant scope from the authenticated
+   session and warehouse assignment checks.
+2. Move minimum-threshold alerts and audience targeting to server-side
+   notifications. The demo `roleCode`, route filtering and in-app toast audience
+   are UI visibility only and must not become RBAC evaluation.
+3. Add initial-balance and duplicate-name/SKU validation to the authoritative
+   product/stock contracts before adding a typed client. Do not freeze the demo
+   request ids or local balance shapes as backend contracts.
+4. Keep the local preview labelling until backend contract, permission, scope,
+   idempotency, audit/outbox and security/integration tests exist.
 
 ## Phase 2 boundary
 

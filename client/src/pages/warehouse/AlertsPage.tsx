@@ -14,7 +14,8 @@ import {
   type DataTableColumn,
 } from '@/components/ui';
 import { useApp } from '@/context/AppContext';
-import { demoAlerts, demoProducts } from '@/data/demoData';
+import { demoAlerts } from '@/data/demoData';
+import { useDemoProductStore } from '@/data/demoProductStore';
 import { t, type TranslationKey } from '@/i18n';
 import { formatDateTime, formatNumber } from '@/lib/format';
 import { useDemoLoader } from '@/lib/useDemoLoader';
@@ -80,6 +81,7 @@ const statusTones: Record<EntityStatus, StatusTone> = {
 
 export function LowStockAlertsPage() {
   const { selectedWarehouse, showToast } = useApp();
+  const { products } = useDemoProductStore();
   const loader = useDemoLoader(demoAlerts);
   const [localAlerts, setLocalAlerts] = useState<readonly DemoAlert[]>(demoAlerts);
   const [search, setSearch] = useState('');
@@ -99,8 +101,7 @@ export function LowStockAlertsPage() {
   const filteredRows = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return rows.filter((alert) => {
-      const productName =
-        demoProducts.find((product) => product.id === alert.productId)?.name ?? '';
+      const productName = products.find((product) => product.id === alert.productId)?.name ?? '';
       const matchesSearch =
         needle === '' ||
         `${alert.title} ${alert.message} ${productName}`.toLocaleLowerCase().includes(needle);
@@ -108,7 +109,7 @@ export function LowStockAlertsPage() {
       const matchesStatus = statusFilter === '' || alert.status === statusFilter;
       return matchesSearch && matchesSeverity && matchesStatus;
     });
-  }, [rows, search, severityFilter, statusFilter]);
+  }, [rows, search, severityFilter, statusFilter, products]);
 
   const activeCount = useMemo(
     () => rows.filter((alert) => alert.status === 'active' || alert.status === 'pending').length,
@@ -131,7 +132,7 @@ export function LowStockAlertsPage() {
       id: 'product',
       headerKey: 'warehouse.alerts.productColumn',
       cell: (row) =>
-        demoProducts.find((product) => product.id === row.productId)?.name ?? row.productId,
+        products.find((product) => product.id === row.productId)?.name ?? row.productId,
       sortValue: (row) => row.productId,
     },
     {
@@ -308,7 +309,7 @@ export function LowStockAlertsPage() {
             <div>
               <strong>{t('warehouse.alerts.productColumn')}</strong>
               <p>
-                {demoProducts.find((product) => product.id === details.productId)?.name ??
+                {products.find((product) => product.id === details.productId)?.name ??
                   details.productId}
               </p>
             </div>

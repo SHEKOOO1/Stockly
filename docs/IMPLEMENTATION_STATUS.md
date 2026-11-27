@@ -29,10 +29,13 @@ migration state and the outbox backlog through a read-only platform principal.
   Dockerfile: pass locally; container execution remains unclaimed.
 - A real API process previously returned 200 from liveness, readiness and OpenAPI.
 - Frontend gates: `npm run format:check`, `npm run typecheck`, `npm run lint`,
-  `npm test` (5 passed) and `npm run build` all pass from `client/`.
-- Production-build browser scan: all 34 routes are RTL with a heading and zero
-  placeholder components; context switch, toast, command palette, search empty
-  state and modal were verified; no console/page errors were captured.
+  `npm test -- --run` (100 passed in 17 files) and `npm run build` all pass from
+  `client/`.
+- Initial production-build browser scan: the original 34 routes were RTL with a
+  heading and zero placeholder components; context switch, toast, command
+  palette, search empty state and modal were verified; no console/page errors
+  were captured. The later warehouse operations route is covered by component
+  tests, not a browser scan.
 - Docker/Compose/Nginx and the GitHub Actions workflow have not been executed;
   no container validation is claimed.
 
@@ -48,7 +51,7 @@ migration state and the outbox backlog through a read-only platform principal.
 | Tests | All six test projects contain real, passing tests |
 | Local infrastructure | Dockerfile, Compose, Nginx config, migration profile, pinned tools |
 | CI | Static and DB-backed workflow gates; coverage artifacts collected |
-| Frontend skeleton | 34 Arabic RTL routes, shell, local interactions, i18n and isolated demo data in `client/` |
+| Frontend skeleton | 35 Arabic RTL routes, shell, local interactions, i18n, isolated demo data, demo-only role-aware navigation and a warehouse operations screen in `client/` |
 
 ## Partial
 
@@ -61,7 +64,7 @@ migration state and the outbox backlog through a read-only platform principal.
 | API contract | `docs/BACKEND_API_CONTRACT_GAPS.md` records all missing DTOs/policies |
 | CI | Frontend, nightly, release, dependency/container scans and coverage thresholds are not implemented |
 | Deployment | Local reference scaffold only; no validated container or target environment |
-| Frontend skeleton | Local preview only; no API/DTOs, auth/RBAC, persistence, service worker or English/LTR locale |
+| Frontend skeleton | Local preview only; no API/DTOs, real auth/RBAC, persistence, service worker or English/LTR locale. Role-aware navigation and notifications are demo visibility only |
 
 ## Not started
 

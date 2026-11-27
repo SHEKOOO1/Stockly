@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import { demoNotifications, demoOrganizations, demoWarehouses } from '@/data/demoData';
-import type { TranslationKey, TranslationValues } from '@/i18n';
+import { t, type TranslationKey, type TranslationValues } from '@/i18n';
 import type {
   AppContextScope,
   DemoNotification,
@@ -24,6 +24,15 @@ export interface ToastMessage {
   tone: StatusTone;
 }
 
+export interface LowStockNotificationInput {
+  lowStockKey: string;
+  productName: string;
+  warehouseName: string;
+  quantity: number;
+  minimum: number;
+  unitLabel: string;
+}
+
 export interface AppContextValue {
   organizations: readonly Organization[];
   warehouses: readonly Warehouse[];
@@ -36,11 +45,14 @@ export interface AppContextValue {
   selectWarehouse: (warehouseId: string) => void;
   activeScope: AppContextScope;
   setActiveScope: (scope: AppContextScope) => void;
+  resetForDemoSession: () => void;
   notifications: readonly DemoNotification[];
   unreadNotificationCount: number;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   dismissNotification: (id: string) => void;
+  raiseLowStockNotifications: (input: LowStockNotificationInput) => void;
+  resolveLowStockNotifications: (lowStockKey: string) => void;
   toasts: readonly ToastMessage[];
   showToast: (messageKey: TranslationKey, tone?: StatusTone, values?: TranslationValues) => void;
   dismissToast: (id: string) => void;
@@ -89,6 +101,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const dismissToast = useCallback((id: string) => {
     setToasts((current) => current.filter((toast) => toast.id !== id));
+  }, []);
+
+  const resetForDemoSession = useCallback(() => {
+    setSelectedOrganizationId(demoOrganizations[0]?.id ?? '');
+    setSelectedWarehouseId(demoWarehouses[0]?.id ?? '');
+    setActiveScope('platform');
+    setNotifications([...demoNotifications]);
+    setToasts([]);
+    setMobileNavOpen(false);
+    setSidebarCollapsed(false);
+    setCommandPaletteOpen(false);
+    setNotificationsOpen(false);
+    setProfileMenuOpen(false);
   }, []);
 
   const selectOrganization = useCallback(
@@ -160,6 +185,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setNotifications((current) => current.filter((item) => item.id !== id));
   }, []);
 
+  const raiseLowStockNotifications = useCallback((input: LowStockNotificationInput) => {
+    const title = t('warehouse.inventory.lowStockTitle', { product: input.productName });
+    const body = t('warehouse.inventory.lowStockBody', {
+      quantity: input.quantity,
+      minimum: input.minimum,
+      unit: input.unitLabel,
+      warehouse: input.warehouseName,
+    });
+    const recipients = ['WarehouseManager', 'TenantOwner'];
+    setNotifications((current) => {
+      const next = [...current];
+      for (const roleCode of recipients) {
+        const exists = current.some(
+          (item) => item.lowStockKey === input.lowStockKey && item.audienceRoleCode === roleCode,
+        );
+        if (!exists) {
+          next.push({
+            origin: 'demo',
+            id: `${input.lowStockKey}:${roleCode}`,
+            title,
+            body,
+            createdAt: new Date().toISOString(),
+            read: false,
+            tone: 'warning',
+            audienceRoleCode: roleCode,
+            lowStockKey: input.lowStockKey,
+          });
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const resolveLowStockNotifications = useCallback((lowStockKey: string) => {
+    setNotifications((current) => current.filter((item) => item.lowStockKey !== lowStockKey));
+  }, []);
+
   const toggleMobileNav = useCallback(() => setMobileNavOpen((open) => !open), []);
   const toggleSidebarCollapsed = useCallback(
     () => setSidebarCollapsed((collapsed) => !collapsed),
@@ -182,11 +244,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectWarehouse,
       activeScope,
       setActiveScope,
+      resetForDemoSession,
       notifications,
       unreadNotificationCount,
       markNotificationRead,
       markAllNotificationsRead,
       dismissNotification,
+      raiseLowStockNotifications,
+      resolveLowStockNotifications,
       toasts,
       showToast,
       dismissToast,
@@ -215,11 +280,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       selectOrganization,
       selectWarehouse,
       activeScope,
+      resetForDemoSession,
       notifications,
       unreadNotificationCount,
       markNotificationRead,
       markAllNotificationsRead,
       dismissNotification,
+      raiseLowStockNotifications,
+      resolveLowStockNotifications,
       toasts,
       showToast,
       dismissToast,

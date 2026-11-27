@@ -164,6 +164,7 @@ export function OrganizationAdministratorsPage() {
       id: `invite-${Date.now()}`,
       name: inviteForm.name.trim(),
       role: t(roleLabels[inviteForm.role]),
+      roleCode: inviteForm.role === 'owner' ? 'TenantOwner' : 'WarehouseManager',
       email: inviteForm.email.trim(),
       organizationIds: [id],
       warehouseIds: [],
